@@ -1,0 +1,1310 @@
+10. Quarkus & Panache
+Qu’est-ce qu’un design pattern ?
+
+Un design pattern (ou patron de conception) est une solution réutilisable à un problème courant dans le développement logiciel. C’est un modèle ou guide réutilisable qui permet de résoudre efficacement des problèmes similaires dans différentes situations.
+
+Les design patterns ne sont pas des morceaux de code spécifiques, mais plutôt des descriptions ou des templates qui peuvent être implémentés dans divers langages de programmation. Ils aident les développeurs à concevoir des systèmes logiciels robustes, maintenables et évolutifs.
+
+Nous allons découvrir ceux utilisés par Panache ORM dans Quarkus pour la gestion des entités et des opérations de persistance.
+
+10.1. Les deux approches de Panache
+Panache propose deux approches principales pour définir la communication avec la BDD : l’approche Active Record et l’approche Repository.
+
+La première consiste à étendre une classe @Entity avec PanacheEntity ou PanacheEntityBase, tandis que la seconde utilise des classes de repository dédiées pour gérer les opérations sur les entités sans les étendre directement, mais en implémentant des interfaces PanacheRepository ou PanacheRepositoryBase.
+
+10.1.1. L’Active Record
+@Entity
+@Table(name = "astronauts")
+public class Astronaut extends PanacheEntity {
+    // Attributs et méthodes de l'entité
+}
+Note
+
+Avec l’approche Active Record et l’extension de PanacheEntity, l’entité hérite automatiquement d’un identifiant de type Long nommé id qui est géré par Panache, mais reste un identifiant JPA standard.
+
+Vous n’avez pas besoin de définir explicitement un champ id dans votre classe d’entité, sauf si vous souhaitez personnaliser son comportement ou son type. Dans ce cas, vous pouvez utiliser PanacheEntityBase et définir votre propre champ id.
+
+@Entity
+@Table(name = "spaceships")
+public class Spaceship extends PanacheEntityBase {
+
+    @Id
+    private String shipCode; // Identifiant personnalisé
+    // Autres attributs et méthodes
+}
+10.1.2. Le Repository
+@Entity
+@Table(name = "astronauts")
+public class Astronaut {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id; // Identifiant explicite
+    // Autres attributs et méthodes
+}
+
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+    // Méthodes de gestion des utilisateurs
+}
+Note
+
+Avec l’approche Repository, vous devez définir explicitement un champ id dans votre classe d’entité, car elle n’hérite pas automatiquement d’un identifiant.
+
+Vous pouvez choisir le type et le nom du champ id selon vos besoins.
+
+L’implémentation de PanacheRepositoryBase vous permet de spécifier le type de l’identifiant en tant que paramètre générique. C’est notamment utile lorsque vous avez besoin de mettre en place une classe générique pour plusieurs entités avec des types d’identifiants différents.
+
+Indication
+
+PanacheRepository est suffisant dans la majorité des cas où l’identifiant est de type Long. PanacheRepositoryBase devient réellement pertinent lorsque l’on souhaite factoriser des repositories avec des types d’identifiants différents.
+
+Voici un exemple où l’utilisation de PanacheRepositoryBase a du sens :
+
+Astronaut.java
+@Entity
+@Table(name = "astronauts")
+public class Astronaut {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id; // Identifiant explicite
+    private String name;
+    // Autres attributs et méthodes
+}
+Spaceship.java
+@Entity
+@Table(name = "spaceships")
+public class Spaceship {
+
+    @Id
+    private String shipCode; // Identifiant personnalisé
+    private String name;
+    // Autres attributs et méthodes
+}
+Nous avons deux entités avec des types d’identifiants différents :
+
+Long pour Astronaut et
+
+String pour Spaceship.
+
+Nous aimerions pouvoir récupérer des instances de l’un et l’autre par leur nom.
+
+La démarche étant similaire, nous allons créer une classe générique BaseRepository qui implémente PanacheRepositoryBase<C, I>, où C est le type de l’entité et I le type de l’identifiant afin d’y définir des méthodes communes et d’éviter la duplication de code.
+
+BaseRepository.java
+public abstract class BaseRepository<C, I> implements PanacheRepositoryBase<C, I> {
+
+    public C findByName(String name) {
+        return find("name", name).firstResult();
+    }
+
+    // Autres méthodes communes
+}
+SpaceshipRepository.java
+public class SpaceshipRepository extends BaseRepository<Spaceship, String> {
+    // Méthodes spécifiques aux vaisseaux spatiaux
+}
+AstronautRepository.java
+public class AstronautRepository extends BaseRepository<Astronaut, Long> {
+    // Méthodes spécifiques aux astronautes
+}
+Important
+
+Ces classes génériques sont abstraites puisque Quarkus ne peut pas instancier directement une classe dont le type concret n’est pas défini à la compilation.
+
+Attention
+
+Elles doivent être utilisées avec précaution pour éviter une complexité excessive et garantir que le code reste lisible et maintenable.
+
+Concrètement comment choisir ?
+
+Active Record
+
+Repository
+
+Utile pour les applications simples ou les prototypes où la rapidité de développement est prioritaire. Elle permet d’écrire moins de code et de gérer les opérations directement dans les entités.
+
+Préférable pour les applications plus complexes ou lorsque l’on souhaite une séparation claire entre la logique métier et la persistance des données. Elle facilite les tests unitaires et la maintenance du code.
+
+Indication
+
+Le choix entre les deux approches dépend souvent de la complexité du projet et des préférences de l’équipe de développement, mais de manière générale, l’approche Repository est préférable si l’on vise une architecture plus propre et maintenable sur le long terme.
+
+C’est notamment le cas dans le Domain-Driven Design (DDD) / Architecture hexagonale où la séparation des préoccupations est essentielle.
+
+10.2. Les transactions avec Panache
+Une transaction est une unité de travail cohérente regroupant plusieurs opérations qui doivent être exécutées comme un tout.
+
+Si toutes les opérations réussissent, la transaction est validée (commit).
+
+Si l’une d’elles échoue, l’ensemble est annulé (rollback), garantissant l’intégrité des données.
+
+Note
+
+Les transactions reposent traditionnellement sur le modèle ACID :
+
+Atomicité
+La transaction forme un bloc indivisible : tout réussit ou tout échoue.
+
+Cohérence
+La base passe d’un état valide à un autre état valide.
+
+Isolation
+Une transaction en cours ne montre pas ses modifications aux autres tant qu’elle n’est pas validée.
+
+Durabilité
+Une fois validées, les modifications persistent même en cas de panne.
+
+En pratique, une transaction suit souvent ce schéma :
+
+début de transaction
+
+opérations de lecture/écriture
+
+commit ou rollback
+
+Dans Quarkus, cette logique est prise en charge par Jakarta Transactions (JTA), et Panache vient simplifier son utilisation au quotidien.
+
+10.2.1. Gestion des transactions avec Panache
+Attention
+
+Quarkus ne démarre pas automatiquement une transaction pour les opérations ORM classiques, c’est au développeur de déclarer explicitement quand un bloc de code doit être transactionnel.
+
+Panache propose deux façons principales de gérer les transactions :
+
+Annoter une méthode avec @Transactional.
+
+Contrôler manuellement une transaction via Panache.withTransaction().
+
+Utiliser l’EntityManager d’Hibernate pour une gestion fine des transactions.
+
+10.2.2. Avec l’annotation @Transactional
+L’annotation @Transactional permet de marquer une méthode comme transactionnelle. Lorsque cette méthode est appelée, Quarkus démarre automatiquement une transaction avant l’exécution et la valide ou l’annule à la fin.
+
+@Transactional
+public void createAstronaut(String name) {
+    Astronaut astro = new Astronaut();
+    astro.setName(name);
+    astro.persist();
+}
+Ici, si createAstronaut s’exécute sans erreurs, la transaction est validée. En cas d’exception, elle est annulée.
+
+Note
+
+Il existe plusieurs options pour configurer le comportement transactionnel via @Transactional, comme le niveau d’isolation, le délai d’attente, etc.
+
+L’annotation @Transactional supporte les options suivantes :
+
+Transactional.TxType : permet de spécifier le type de transaction à utiliser.
+
+rollbackOnpermet de spécifier les types d’exceptions qui doivent déclencher un rollback.
+Par exemple, @Transactional(rollbackOn = {CustomException.class}) indique que si CustomException est levée, la transaction doit être annulée.
+
+dontRollbackOnpermet de spécifier les types d’exceptions qui ne doivent pas déclencher un rollback.
+Par exemple, @Transactional(dontRollbackOn = {CustomException.class}) indique que si CustomException est levée, la transaction ne doit pas être annulée.
+
+TxType
+
+Description
+
+Usage typique / Remarques
+
+REQUIRED
+
+Utilise la transaction existante si elle existe ; sinon
+
+en crée une nouvelle.
+
+Le type par défaut.
+
+REQUIRES_NEW
+
+Suspend la transaction existante et en crée une nouvelle.
+
+Utilisé quand vous voulez isoler une opération pour qu’elle ne soit pas affectée par la transaction courante.
+
+MANDATORY
+
+Exige qu’une transaction existe déjà ; sinon
+
+lève une exception.
+
+Pour les méthodes qui ne doivent jamais démarrer une nouvelle transaction mais doivent être appelées dans une transaction existante.
+
+SUPPORTS
+
+Exécute dans le contexte de la transaction existante si elle existe ; sinon
+
+sans transaction.
+
+Utile pour les méthodes qui peuvent fonctionner avec ou sans transaction.
+
+NOT_SUPPORTED
+
+Suspend toute transaction existante et exécute sans transaction.
+
+Pour les opérations qui ne doivent pas être transactionnelles
+
+par exemple des logs ou des lectures non bloquantes.
+
+NEVER
+
+Exécute sans transaction et lève une exception si une transaction existe.
+
+Rarement utilisé
+
+sert à garantir qu’aucune transaction n’est active.
+
+Indication
+
+Par défaut, @Transactional utilise TxType.REQUIRED, ce qui convient à la plupart des cas courants.
+
+10.2.3. Avec Panache.withTransaction()
+Pour des cas plus complexes, Panache.withTransaction() permet de définir un bloc de code transactionnel de manière programmatique.
+
+Panache.withTransaction(() -> {
+    Astronaut astro = new Astronaut();
+    astro.setName("Dallas");
+    astro.persist();
+    // autres opérations
+});
+10.2.4. Avec l’EntityManager
+Même si Panache simplifie grandement la gestion des transactions, il est toujours possible d’utiliser directement l’EntityManager pour un contrôle plus fin.
+
+public void customTransaction() {
+
+    EntityManager em = Panache.getEntityManager();
+    EntityTransaction transaction = em.getTransaction();
+
+    try {
+        transaction.begin();
+        // opérations de persistance
+        transaction.commit();
+    } catch (Exception e) {
+        if (transaction.isActive()) transaction.rollback();
+        throw e;
+    }
+
+}
+Note
+
+Dans la plupart des cas, l’utilisation directe de l’EntityTransaction n’est pas nécessaire grâce aux abstractions fournies par Panache. Cet exemple vise à illustrer ce qu’il se passe en coulisses.
+
+Indication
+
+Dans la plupart des cas, préférez l’utilisation de l’annotation @Transactional pour sa simplicité et sa clarté.
+
+Utilisez Panache.withTransaction() uniquement lorsque vous avez des besoins spécifiques qui ne peuvent pas être couverts par l’annotation.
+
+Attention
+
+Evitez d’effectuer des opérations non liées à la base de données à l’intérieur d’une transaction pour ne pas prolonger inutilement sa durée et améliorer les performances.
+
+Attention à ne pas imbriquer des transactions de manière incorrecte, ce qui pourrait entraîner des comportements inattendus.
+
+Les transactions doivent rester focalisées sur les opérations de persistance ; pour les simples méthodes de lecture, il n’est généralement pas nécessaire d’utiliser une transaction explicite.
+
+Pensez à bien gérer les exceptions pour éviter des rollbacks inattendus.
+
+10.3. CRUD et Panache
+Nous allons explorer comment effectuer des opérations CRUD (Create, Read, Update, Delete) simples en utilisant Panache ORM avec Quarkus. L’objectif est de comprendre le fonctionnement de base avant de passer à des concepts plus avancés.
+
+10.3.1. Création d’une entité Panache
+Nous devons définir une entité qui représentera une table dans notre base de données. Voici un exemple d’entité Astronaut pour illustrer les opérations CRUD.
+
+@Entity
+@Table(name = "astronauts")
+public class Astronaut extends PanacheEntity {
+
+    private String name;
+
+    private String email;
+
+    // Getters et Setters
+
+}
+Pour créer une nouvelle instance de Astronaut et la sauvegarder dans la base de données, nous utilisons la méthode persist() :
+
+Astronaut astro = new Astronaut();
+astro.setName("Ripley");
+astro.setEmail("arsouilleur@mail.cloud");
+astro.persist();
+Indication
+
+La méthode persist() n’entraîne pas une insertion immédiate dans la base de données. L’écriture réelle n’a lieu qu’au moment où la transaction en cours est validée. Ce fonctionnement permet derrière à JPA/Hibernate d’optimiser les performances, notamment en regroupant plusieurs opérations en une seule interaction avec la base.
+
+Si nécessaire, la méthode persistAndFlush() peut être utilisée pour forcer la synchronisation immédiate de l’état de l’entité avec la base de données. Elle a son utilité lorsqu’une lecture immédiate des données fraîchement créées est nécessaire dans la même transaction.
+
+Danger
+
+Son usage doit rester exceptionnel : appelée trop fréquemment, elle peut dégrader les performances et compliquer la gestion transactionnelle.
+
+Vous pouvez aussi réaliser un flush() manuel via l’EntityManager si besoin comme suit :
+
+Astronaut.getEntityManager().flush();
+Attention
+
+Pour éviter les erreurs telles que TransactionRequiredException ou NoSession, assurez-vous que vos opérations de création sont exécutées au sein d’un contexte de persistance actif.
+
+En pratique, cela signifie que la création d’une ressource doit être effectué dans une méthode annotée :code;`@Transactional`, afin que l’entité soit correctement gérée par l’EntityManager.
+
+10.3.2. Opération de lecture (Read)
+Pour récupérer tous les astronautes
+List<Astronaut> astronauts = Astronaut.listAll();
+Pour trouver un astronaute par son ID
+Astronaut astro = Astronaut.findById(1L);
+Pour trouver un astronaute par son ID avec gestion des cas NULL via un Optional
+Optional<Astronaut> astro = Astronaut.findByIdOptional(1L);
+Pour compter le nombre total d’astronautes
+long count = Astronaut.count();
+Indication
+
+Lorsque vous utilisez des méthodes comme findById qui peuvent potentiellement retourner null, il est recommandé d’opter pour findByIdOptional à la place. Cette dernière méthode renvoie un Optional, ce qui facilite la gestion des cas où l’entité n’existe pas, évitant ainsi les erreurs de type NullPointerException.
+
+Attention
+
+Exécuter un listAll() effectue un SELECT * complet, ce qui peut rapidement devenir coûteux.
+
+Les méthodes comme celle-ci sont utiles pour les démonstrations, mais elles ne sont pas optimisées pour les tables volumineuses.
+
+10.3.3. Mise à jour (Update)
+Astronaut astro = Astronaut.findByIdOptional(id)
+.orElseThrow(() -> new NotFoundException("Astronaute non trouvé"));
+
+astro.setEmail("arsouilleurEnChef@mail.cloud")
+Indication
+
+Et c’est tout ! En Panache, il n’est pas nécessaire d’appeler une méthode spécifique pour sauvegarder les modifications apportées à une entité. Une fois que vous avez modifié les propriétés de l’entité récupérée, les changements sont automatiquement suivis et persistés dans la base de données lors de la transaction en cours.
+
+Cela est rendu possible grâce au mécanisme de dirty checking de JPA, qui détecte les modifications apportées aux entités gérées et génère les requêtes SQL appropriées pour mettre à jour la base de données lorsque la transaction est validée.
+
+Attention
+
+Pour éviter des erreurs telles que TransactionRequiredException ou des entités non suivies, assurez-vous que la récupération et la modification de l’entité se font dans la même transaction. Dans la pratique, cela signifie que votre méthode de mise à jour doit être annotée avec @Transactional.
+
+10.3.4. Suppression (Delete)
+Astronaut astro = Astronaut.findByIdOptional(1L)
+    .orElseThrow(() -> new NotFoundException("Astronaute non trouvé"));
+
+astro.delete();
+Attention
+
+Pour éviter toute erreur liée au contexte de persistance, assurez-vous que les opérations de suppression se déroulent dans une transaction active. En pratique, annotez la méthode contenant la logique de suppression avec @Transactional.
+
+boolean deleted = Astronaut.deleteById(1L);
+
+if (!deleted) throw new NotFoundException("Utilisateur non trouvé");
+long deletedCount = Astronaut.deleteAll();
+Note
+
+La méthode deleteById et deleteAll() sont appelés directement sur la classe de l’entité et non sur une instance.
+
+Les méthodes de suppression retournent un booléen ou un compte indiquant si la suppression a réussi ou combien d’entités ont été supprimées, ce qui est utile pour la gestion des erreurs. Seul delete() ne retourne rien.
+
+Indication
+
+Pour optimiser les performances, utilisez de préférence la méthode deleteById lorsque vous n’avez pas besoin de charger l’entité avant de la supprimer. Cela évite une requête supplémentaire.
+
+10.4. Les filtres avec Panache
+Nous allons mettre l’accent sur l’utilisation des filtres pour affiner les opérations CRUD (Create, Read, Update, Delete). Les filtres permettent de définir des critères spécifiques pour les opérations, offrant ainsi une flexibilité accrue dans la gestion des entités.
+
+Note
+
+À partir de maintenant, les exemples de code se baseront sur le pattern Repository uniquement afin de garder en tête les bonnes pratiques. L’équivalent en Active Record est très similaire.
+
+Alien.java
+@Entity
+@Table(name = "aliens")
+public class Alien {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String codename;
+
+    private int healthPoints;
+
+    private int attackPower;
+
+    private int stealthLevel;
+
+    // Getters et Setters
+
+}
+AlienRepository.java
+@ApplicationScoped
+public class AlienRepository implements PanacheRepository<Alien> {
+    // Méthodes CRUD personnalisées sont ajoutées ici
+}
+Avant toute chose, il faut savoir qu’il existe deux façons d’indiquer des filtres dans les méthodes Panache :
+
+En utilisant des paramètres positionnels (?1, ?2)
+
+En utilisant des paramètres nommés (:paramName)
+
+Indication
+
+Le premier est plus simple à utiliser, mais requiert de faire attention à l’ordre des paramètres. Le second est plus verbeux, mais moins sujet aux erreurs lorsque plusieurs paramètres sont utilisés.
+
+Les bonnes pratiques recommandent d’utiliser les paramètres nommés pour des requêtes complexes.
+
+Attention
+
+L’écriture des paramètres dans les ORM se basent sur les entités et leurs attributs, et non sur les noms des colonnes en base de données. Assurez-vous d’utiliser les noms des attributs tels qu’ils sont définis dans la classe de l’entité.
+
+Pour lire des entités en utilisant des filtres, vous pouvez utiliser la méthode find de Panache avec une clause where sans avoir besoin de l’ajouter explicitement.
+
+Pour récupérer un alien en fonction de son nom de code
+public Alien getAlienByCodename(String codename) {
+    return find("codename = :name", Parameters.with("name", codename)).firstResult();
+}
+ou si l’on veut encapsuler un NULL potentiel
+public Optional<Alien> getAlienByCodename(String codename) {
+    return find("codename = :name", Parameters.with("name", codename))
+        .firstResultOptional();
+}
+Note
+
+Le paramètre :name est remplacé par la valeur fournie dans l’appel de la méthode.
+
+Indication
+
+Pour éviter les erreurs de type NullPointerException lorsque vous manipulez le résultat, il est recommandé d’utiliser la méthode firstResultOptional() qui renvoie un Optional<Alien>. Cela permet de gérer plus facilement et plus proprement les cas où aucun résultat n’est trouvé.
+
+public List<Alien> getPraetorianAlien(int minAttackPower) {
+    return find("attackPower > :power", Parameters.with("power", minAttackPower)).list();
+}
+
+public List<Alien> getPraetorianAlien(int minAttackPower) {
+    return list("attackPower > :power", Parameters.with("power", minAttackPower));
+}
+Si vous avez des critères multiples, vous pouvez les ajouter sans problème en utilisant les opérateurs logiques appropriés (AND, OR, etc.) comme si vous écriviez une requête SQL classique.
+
+public long getHealthyAlien(int minHealth, int maxHealth) {
+    return count("healthPoints between :min and :max",
+        Parameters.with("min", minHealth).and("max", maxHealth));
+}
+Pour mettre à jour des entités en utilisant des filtres, vous pouvez utiliser la méthode update de Panache avec une clause where.
+
+public int updateSneakyAlien(int healthPoints, int stealthLevel) {
+    return update("healthPoints = :health where stealthLevel > :stealth",
+        Parameters.with("health", healthPoints).and("stealth", stealthLevel));
+}
+public int updateAttackPowerForSpecificAlien(int attackPower, int healthPoints, int stealthLevel) {
+    return update("attackPower = :power where healthPoints < :health and stealthLevel > :stealth",
+        Parameters.with("power", attackPower)
+            .and("health", healthPoints)
+            .and("stealth", stealthLevel));
+}
+Indication
+
+Elle est indispensable pour les mises à jour multiples, mais aussi pour une entité unique en évitant de charger l’entité au préalable. Il suffit de s’assurer que le filtre utilisé dans la clause where identifie de manière unique l’entité à mettre à jour (par exemple, en utilisant son ID). Gain de performance garanti !
+
+Notez également que la méthode update retourne un int représentant le nombre d’enregistrements affectés par la mise à jour, ce qui peut être utile pour vérifier si l’opération a réussi.
+
+Attention
+
+La méthode update avec des filtres est puissante, mais elle doit être utilisée avec précaution pour éviter des mises à jour accidentelles de plusieurs enregistrements. Assurez-vous toujours de bien définir vos critères dans la clause where.
+
+Pour supprimer des entités en utilisant des filtres, vous pouvez utiliser la méthode delete de Panache avec une clause where sans avoir besoin de l’ajouter explicitement.
+
+public long deleteAlienBySneakiness(int stealth) {
+    return delete("stealthLevel = :level", Parameters.with("level", stealth));
+}
+public long deleteAlienWithBelowAttackAndNotHealthPoints(int attackPower, int health) {
+    return delete("attackPower < ?1 and healthPoints <> ?2", attackPower, health);
+}
+Indication
+
+La méthode delete retourne un long représentant le nombre d’enregistrements supprimés, ce qui peut être utile pour vérifier si l’opération a réussi.
+
+Danger
+
+La méthode delete avec des filtres est très puissante, mais elle doit être utilisée avec précaution pour éviter de supprimer accidentellement des données importantes. Assurez-vous toujours de bien définir vos critères dans la clause where, car elle peut supprimer plusieurs enregistrements à la fois.
+
+10.5. Les jointures avec Panache
+Une jointure est une opération en base de données qui permet de combiner des lignes de deux ou plusieurs tables en fonction d’une condition liée entre elles. Les jointures sont essentielles pour interroger des données réparties sur plusieurs tables relationnelles.
+
+Les types de jointures les plus courants sont :
+
+INNER JOIN
+Retourne les lignes qui ont des correspondances dans les deux tables.
+
+LEFT JOIN
+Retourne toutes les lignes de la table de gauche et les lignes correspondantes de la table de droite. Si aucune correspondance n’existe, les résultats de la table de droite seront NULL.
+
+RIGHT JOIN
+Retourne toutes les lignes de la table de droite et les lignes correspondantes de la table de gauche. Si aucune correspondance n’existe, les résultats de la table de gauche seront NULL.
+
+FULL JOIN
+Retourne toutes les lignes lorsque qu’il y a une correspondance dans l’une ou l’autre des tables.
+
+Note
+
+INNER JOIN est souvent indiqué dans sa forme raccourcie JOIN. Il s’agit du type de jointure par défaut lorsque le type n’est pas spécifié, et c’est la forme de la plus couramment utilisée.
+
+Contrairement aux simplifications apportées sur les opérations filtrées par Panache, les jointures nécessitent une approche plus explicite. Les relations entre les entités doivent être préalablement définies correctement à l’aide des annotations JPA telles que @OneToMany, @ManyToOne, @OneToOne, et @ManyToMany. Ensuite, les jointures peuvent être utilisées dans les requêtes pour récupérer des données liées en utilisant JPQL (Java Persistence Query Language).
+
+Supposons que nous ayons trois entités : Astronaut, Ship et Alien, où un astronaute est assigné à un vaisseau. Un astronaute peut également être l’hôte d’un alien. Incidement, un alien peut aussi être assigné à un vaisseau que ça soit ou non via un astronaute.
+
+Voici comment nous pourrions définir ces entités :
+
+Astronaut.java
+@Entity
+@Table(name = "astronauts")
+public class Astronaut {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "ship_id", nullable = false)
+    private Ship ship;
+
+    @OneToOne(fetch = FetchType.LAZY, mappedBy = "host")
+    private Alien alien;
+
+    // getters et setters
+
+}
+Ship.java
+@Entity
+@Table(name = "ships")
+public class Ship {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+
+    @OneToMany(mappedBy = "ship", fetch = FetchType.LAZY)
+    private List<Astronaut> astronauts = new ArrayList<>();
+
+    @OneToMany(mappedBy = "ship", fetch = FetchType.LAZY)
+    private List<Alien> aliens = new ArrayList<>();
+
+    // getters et setters
+
+}
+Alien.java
+@Entity
+public class Alien {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String codename;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "ship_id", nullable = true)
+    private Ship ship;
+
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "astronaut_id", nullable = false, unique = true)
+    private Astronaut host;
+
+    // getters et setters
+
+}
+Avec ces entités définies, nous pouvons effectuer des jointures dans nos requêtes JPQL.
+
+Pour récupérer tous les astronautes avec leurs vaisseaux respectifs :
+
+AstronautRepository.java
+public List<Astronaut> findAstronautsWithShips() {
+    return find("SELECT a FROM Astronaut a JOIN FETCH a.ship").list();
+}
+Ici a représente chaque astronaute, et a.ship fait référence au vaisseau associé à cet astronaute. Il s’agit d’un aliasing standard en JPQL. Comme tout est récupéré, a contiendra les informations de l’astronaute ainsi que celles de son vaisseau.
+
+Comme les données associées sont en fetch = FetchType.LAZY, l’utilisation du mot clef FETCH après le JOIN est indispensable pour éviter des problème de N+1. Cela garantit que les données du vaisseau sont chargées en même temps que les astronautes, réduisant ainsi le nombre total de requêtes exécutées à la base de données.
+
+Note
+
+Les cas N+1 surviennent lorsque chaque entité principale (ici, chaque astronaute) déclenche une requête supplémentaire pour charger ses entités associées (ici, les vaisseaux).
+
+Si nous avons 10 astronautes, sans JOIN FETCH, cela pourrait entraîner 1 requête pour récupérer les astronautes et 10 requêtes supplémentaires pour récupérer les vaisseaux associés, totalisant 11 requêtes.
+
+Avec JOIN FETCH, une seule requête est effectuée pour récupérer à la fois les astronautes et leurs vaisseaux, améliorant ainsi considérablement les performances. Ce phénomène survient lorsqu’on cherche à accéder aux entités associées qui sont configurées pour un chargement paresseux (LAZY).
+
+Avertissement
+
+À ne pas faire !
+
+List<Astronaut> astronauts = astronautRepository.findAll().list();
+
+for (Astronaut astronaut : astronauts) {
+    System.out.println(astronaut.getShip().getName());
+}
+Dans cet exemple, chaque appel à astronaut.getShip() déclenche une requête supplémentaire pour charger le vaisseau de chaque astronaute, ce qui peut entraîner un grand nombre de requêtes si la liste des astronautes est conséquente.
+
+Pour récupérer tous les astronautes qu’il soit hôte ou non d’un alien et sur le vaisseaux nommé Nostromo :
+
+public List<Astronaut> findAstronautsWithAliensOnNostromo() {
+    return find("""
+                    SELECT a FROM Astronaut a
+                    LEFT JOIN FETCH a.alien
+                    JOIN FETCH a.ship s
+                    WHERE s.name = :shipName
+                """,
+            Parameters.with("shipName", "Nostromo")).list();
+}
+Ici, nous utilisons une jointure gauche (LEFT JOIN FETCH) pour inclure les aliens associés aux astronautes, même si certains astronautes n’ont pas d’alien hôte. Nous utilisons également une jointure interne (JOIN FETCH) pour filtrer les astronautes en fonction du nom de leur vaisseau.
+
+Indication
+
+Pour les requêtes longues, l’utilisation de la syntaxe « «  » (text block) en Java permet d’améliorer la lisibilité du code en évitant les concaténations de chaînes de caractères.
+
+Note
+
+L’écriture des requêtes directement dans une méthode find() peut devenir rapidement complexe et difficile à maintenir pour des requêtes avec de nombreuses jointures ou des conditions complexes. Du fait que le paramètre de la méthode find() est une simple chaîne de caractères, il n’y a pas de vérification de syntaxe à la compilation, ce qui peut entraîner des erreurs au moment de l’exécution si la requête est mal formée.
+
+Il peut être préférable d’utiliser des Named Queries ou de recourir à l’EntityManager pour une gestion plus fine des requêtes.
+
+10.5.1. Opérations de persistence
+Lorsque vous travaillez avec des entités liées par des jointures, il est important de gérer correctement les opérations de persistance (création, mise à jour, suppression) pour maintenir l’intégrité des données. Par exemple, lors de la création d’un nouvel astronaute, vous devez vous assurer que le vaisseau associé existe déjà dans la base de données.
+
+Lors de la création d’un astronaute avec un vaisseau existant, vous devez d’abord récupérer le vaisseau, puis associer l’astronaute à ce vaisseau avant de persister l’astronaute puisque ce dernier dépend de l’existence du vaisseau.
+
+@Transactional
+public void createAstronaut(String name, Long shipId) {
+
+    Ship ship = shipRepository.findByIdOptional(shipId);
+        .orElseThrow(() -> new NotFoundException("Vaisseau non trouvé"));
+
+    Astronaut astro = new Astronaut();
+    astro.setName(name);
+    astro.setShip(ship);
+    astronautRepository.persist();
+
+}
+Attention
+
+Bien qu’elle fonctionne, cette approche suppose de charger l’entité Ship depuis la base de données, ce qui peut être inefficace si vous n’avez besoin que de son identifiant pour établir la relation.
+
+10.5.1.1. Utilisation d’une référence proxy
+Pour éviter les chargement inutiles, vous pouvez utiliser une référence proxy à l’entité Ship sans la charger complètement. Ceci peut être fait en utilisant la méthode getReference() de l’EntityManager. Voici comment vous pouvez le faire :
+
+Ship ship = shipRepository.getEntityManager().getReference(Ship.class, shipId);
+
+Astronaut astro = new Astronaut();
+astro.setName(name);
+astro.setShip(ship);
+astronautRepository.persist();
+Cela crée une référence à l’entité Ship basée sur son identifiant, sans charger ses données depuis la base de données, ce qui peut améliorer les performances.
+
+Attention
+
+La récupération de la référence proxy ne vérifie pas si l’identifiant existe réellement dans la base de données. Si vous essayez de persister l’astronaute avec un identifiant de vaisseau inexistant, une exception sera levée lors de la tentative d’insertion dans la base de données.
+
+Indication
+
+Pensez à vérifier l’existence de l’entité associée avant d’utiliser getReference() si vous n’êtes pas certain que l’identifiant est valide. Pour ce faire, vous pouvez tous simplement créer une méthode de validation qui vérifie l’existence de l’entité avant de procéder à la création.
+
+ShipRepository.java
+public boolean exists(Long id) return count("id", id) > 0;
+AstronautService.java
+if (!shipRepository.exists(shipId)) {
+    throw new NotFoundException("Vaisseau non trouvé");
+}
+10.5.1.2. Mise à jour et jointures en Panache
+Pour mettre à jour un astronaute et son vaisseau associé, vous devez d’abord récupérer l’astronaute, ainsi que le nouveau vaisseau, puis mettre à jour les différentes propriétés avant de persister les modifications.
+
+AstronautService.java
+@Transactional
+public void updateAstronaut(Long id, AstronautUpsert astronautUpdate) {
+
+    Astronaut astro = astronautRepository.findByIdOptional(id)
+        .orElseThrow(() -> new NotFoundException("Astronaute non trouvé"));
+
+    Ship newShip = shipRepository.findByIdOptional(astronautUpdate.shipId)
+        .orElseThrow(() -> new NotFoundException("Vaisseau non trouvé"));
+
+    astro.setName(astronautUpdate.name);
+    astro.setShip(newShip);
+}
+Note
+
+Comme déjà spécifié dans le chapitre sur les bases de Panache, il n’est pas nécessaire d’appeler explicitement une méthode de mise à jour ou de persistance après avoir modifié les propriétés d’une entité gérée. Grâce au mécanisme de dirty checking d’Hibernate, les modifications seront automatiquement détectées et synchronisées avec la base de données lors du commit de la transaction.
+
+Indication
+
+Pour éviter de charger complètement le nouveau vaisseau, vous pouvez utiliser une référence proxy comme suit :
+
+@Transactional
+public void updateAstronaut(Long id, AstronautUpsert astronautUpdate) {
+
+    Astronaut astro = astronautRepository.findByIdOptional(id)
+        .orElseThrow(() -> new NotFoundException("Astronaute non trouvé"));
+
+    Ship newShip = shipRepository.getEntityManager()
+        .getReference(Ship.class, astronautUpdate.shipId);
+
+    astro.setName(astronautUpdate.name);
+    astro.setShip(newShip);
+}
+Vous pouvez également aller plus loin en utilisant la méthode update() de Panache pour éviter de charger l’astronaute si vous n’avez pas besoin de ses autres propriétés.
+
+@Transactional
+public void updateAstronaut(Long id, AstronautUpsert astronautUpdate) {
+
+    Ship newShip = shipRepository.getEntityManager()
+        .getReference(Ship.class, astronautUpdate.shipId);
+
+    astronautRepository.update("name = :name, ship = :ship where id = :id",
+        Parameters.with("name", astronautUpdate.name)
+                .and("ship", newShip)
+                .and("id", id)
+    );
+}
+Choix de l’approche
+
+Charger l’entité puis modifier ses propriétés
+Idéal quand vous avez besoin de lire ou valider d’autres informations de l’entité avant de la modifier. Hibernate s’occupe de tout grâce au dirty checking.
+
+Utiliser getReference()
+Idéal lorsque vous connaissez l’ID de l’entité et que vous n’avez pas besoin de charger ses données. Cela évite un aller-retour inutile en base, tout en gardant un code 100% cohérent avec le modèle objet.
+
+Utiliser update() de Panache
+La meilleure option quand vous ne voulez pas charger l’entité. Cette approche est optimale pour les mises à jour simples et ciblées (édition d’un nom, changement de relation, etc.).
+
+10.5.1.3. Suppression avec Panache
+Lors de la suppression d’un astronaute, vous devez également gérer les relations avec les entités associées, notamment si vous n’avez pas défini de contrainte particulière de suppression en cascade dans vos entités et vos bases de données.
+
+Si un vaisseau contient des astronautes, vous devez décider comment gérer cette relation lors de la suppression d’un vaisseau.
+
+Exemple de suppression d’un vaisseau et de tous ses astronautes associés
+@Transactional
+public void deleteShip(Long shipId) {
+
+    Ship ship = shipRepository.findByIdOptional(shipId)
+        .orElseThrow(() -> new NotFoundException("Vaisseau non trouvé"));
+
+    // Suppression des astronautes selon le vaisseau
+    astronautRepository.delete("ship", ship);
+
+    // Suppression du vaisseau
+    shipRepository.delete(ship);
+}
+Attention
+
+L’entité Ship est entièrement chargée avant la suppression. Ceci peut être inefficace si vous n’avez besoin que de son identifiant pour effectuer la suppression et que vous n’avez pas besoin d’exécuter de logique métier supplémentaire basée sur les données de l’entité. Vous pouvez optimiser cela en utilisant une référence proxy comme mentionné précédemment.
+
+Utilisation d’une référence proxy
+
+@Transactional
+public void deleteShip(Long shipId) {
+    Ship ship = shipRepository.getEntityManager()
+        .getReference(Ship.class, shipId);
+    // Suppression des astronautes selon le vaisseau
+    astronautRepository.delete("ship", ship);
+    // Suppression du vaisseau
+    shipRepository.delete(ship);
+}
+Indication
+
+Si vous avez configuré des règles de suppression en cascade dans vos entités, cette étape peut être automatisée. Pensez donc bien à définir ces règles en fonction de vos besoins métier afin de vous faciliter la vie lors des opérations de suppression.
+
+Avec une bonne configuration, vous pouvez simplement vérifier l’existence de l’entité parente et la supprimer après avec un deleteById(), et les entités enfants seront automatiquement supprimées en cascade.
+
+10.6. Les named queries
+Les named queries sont des requêtes prédéfinies que vous pouvez définir dans vos entités JPA. Elles permettent de réutiliser des requêtes courantes sans avoir à les réécrire à chaque fois. Elles sont particulièrement utiles pour les requêtes complexes ou fréquemment utilisées.
+
+L’avantage des named queries est qu’elles sont compilées au démarrage de l’application, ce qui peut améliorer les performances du fait de la validation anticipée des requêtes.
+
+Les named queries peuvent être définies à l’aide de l’annotation @NamedQuery sur une entité.
+
+@Entity
+@NamedQuery(name = "Astronaut.findAstronautsByShipName",
+            query = """
+                    SELECT a FROM Astronaut a
+                    JOIN FETCH a.ship s
+                    LEFT JOIN FETCH a.alien
+                    WHERE s.name = :name
+                    """)
+public class Astronaut {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "ship_id", nullable = false)
+    private Ship ship;
+
+    @OneToOne(fetch = FetchType.LAZY, mappedBy = "host")
+    private Alien alien;
+
+    // Getters et setters
+}
+Celle-ci définit une named query appelée Astronaut.findAstronautsByShipName qui sélectionne les astronautes en fonction du nom de leur vaisseau et qu’ils soient liés à un alien ou non. Le nom de la requête est spécifié par l’attribut name, et la requête JPQL elle-même est définie dans l’attribut query.
+
+Note
+
+Par convention, le nom d’une named query est souvent préfixé par le nom de l’entité suivi d’un point et d’une description de la requête. Cela permet d’éviter les conflits de noms et de rendre les requêtes plus faciles à identifier.
+
+Indication
+
+Afin de faciliter la maintenabilité, écrivez les noms des named queries dans une constante, soit directement dans l’entité, soit dans une interface dédiée. Cela permet d’éviter les erreurs de frappe lors de l’utilisation des requêtes. Voici un exemple de définition d’une constante pour le nom de la named query dans l’entité Astronaut :
+
+Astronaut.java
+@Entity
+@NamedQuery(name = Astronaut.FIND_ASTRONAUTS_BY_SHIP_NAME,
+            query = "SELECT a FROM Astronaut")
+public class Astronaut {
+
+    public static final String FIND_ASTRONAUTS_BY_SHIP_NAME =
+        "Astronaut.findAstronautsByShipName";
+
+    // Reste de l'entité
+
+}
+10.6.1. Utiliser une named query
+Pour utiliser une named query dans Panache ORM, vous pouvez utiliser la méthode find de la classe PanacheRepository ou PanacheEntity, en passant le nom de la requête et les paramètres nécessaires.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<Astronaut> findAstronautsByShipName(String shipName) {
+        return find("#Astronaut.findAstronautsByShipName",
+                    Parameters.with("name", shipName))
+            .list();
+    }
+
+}
+Ici, nous utilisons la méthode find avec le nom de la named query précédé d’un # pour indiquer qu’il s’agit d’une named query. Nous passons également les paramètres nécessaires à la requête en utilisant la classe Parameters comme dans les requêtes JPQL standard.
+
+Note
+
+Vous pouvez également utiliser les paramètres positionnels dans les named queries en utilisant des points d’interrogation (?1, ?2, etc.) dans la définition de la requête, et en passant les paramètres dans l’ordre lors de l’appel de la méthode find. Cependant, l’utilisation de paramètres nommés est généralement préférée pour une meilleure lisibilité et maintenabilité du code sachant que l’ordre des paramètres peut être d’autant plus source d’erreurs dans le cadre des named queries.
+
+Avertissement
+
+Dans l’exemple donné, la référence à la named query utilise une chaîne de caractères littérale. Pour éviter les erreurs de frappe, il est recommandé d’utiliser une constante pour le nom de la named query, comme montré précédemment. Cela améliore la maintenabilité du code et réduit les risques d’erreurs. Pour autant, écrire ceci n’est pas optimal, car redondant et épuisant à maintenir :
+
+AstronautRepository.java
+public List<Astronaut> findAstronautsByShipName(String shipName) {
+    return find("#" + Astronaut.FIND_ASTRONAUTS_BY_SHIP_NAME,
+                Parameters.with("name", shipName))
+            .list();
+}
+Indication
+
+Pour profiter pleinement des named queries tout en évitant la redondance du # imposé par Panache et les erreurs de frappe, vous pouvez créer un BaseRepository générique et personnalisé qui encapsule cette logique.
+
+BaseRepository.java
+public abstract class BaseRepository<T> implements PanacheRepository<T> {
+
+    public PanacheQuery<T> findByNamedQuery(String namedQuery, Parameters params) {
+        return find("#" + namedQuery, params);
+    }
+
+}
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository extends BaseRepository<Astronaut> {
+
+    public List<Astronaut> findAstronautsByShipName(String shipName) {
+        return findByNamedQuery(Astronaut.FIND_ASTRONAUTS_BY_SHIP_NAME,
+                    Parameters.with("name", shipName))
+            .list();
+    }
+
+}
+Note
+
+La méthode findByNamedQuery dans le BaseRepository est volontairement simple et directe, ce qui laisse la possibilité de choisir sur la méthode de récupération des résultats (comme list(), firstResult(), etc.) selon les besoins spécifiques de chaque repository.
+
+Cette approche améliore la lisibilité et la maintenabilité du code tout en tirant parti des avantages des named queries dans Panache ORM.
+
+10.7. Les projections
+Les projections permettent de sélectionner uniquement certaines colonnes d’une entité au lieu de récupérer l’entité complète. Cela peut être utile pour optimiser les performances lorsque vous n’avez besoin que de quelques attributs d’une entité .
+
+Si vous avez une entité Astronaut avec de nombreux attributs, mais que vous ne souhaitez récupérer que le nom et l’ID, vous pouvez utiliser une projection pour ne sélectionner que ces colonnes et économiser ainsi de la mémoire et du temps de traitement.
+
+Pour utiliser les projections avec Panache ORM, vous pouvez définir une classe ou record DTO (Data Transfer Object) qui contient uniquement les attributs que vous souhaitez récupérer.
+
+Indication
+
+Si vous êtes en Java 16 ou une version ultérieure, il est recommandé d’utiliser des records pour définir vos projections. Les records offrent une syntaxe plus concise et sont immuables par défaut , ce qui les rend idéaux pour les DTOs.
+
+Si vous optez pour les classes classiques, assurez-vous d’inclure des constructeurs appropriés et des méthodes getter pour chaque attribut projeté afin que Quarkus puisse instancier correctement les objets lors de l’exécution.
+
+10.7.1. Projection simple
+Pour une entité Astronaut dont l’on souhaite récupérer uniquement l’id et le nickname, vous pouvez définir une projection comme suit :
+
+AstronautProjection.java
+@RegisterForReflection
+public record AstronautProjection(
+    Long id,
+    String nickname
+) {}
+L’annotation @RegisterForReflection est utilisée pour s’assurer que Quarkus peut accéder à cette classe lors de l’exécution, notamment dans les environnements natifs. Cela est important pour les projections, car elles sont souvent utilisées dans des contextes où la réflexion est nécessaire pour instancier les objets.
+
+Vous pouvez utiliser ces classes ou records dans vos requêtes Panache.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<AstronautProjection> findAllAstronauts() {
+        return findAll()
+                .project(AstronautProjection.class)
+                .list();
+    }
+
+}
+Ici, nous utilisons la méthode project pour spécifier que nous souhaitons projeter les résultats dans la classe AstronautProjection. La méthode list renvoie une liste d’objets de type AstronautProjection contenant uniquement les attributs définis dans la projection. L’utilisation de findAll() est utile lorsque vous souhaitez récupérer tous les enregistrements de l’entité et que vous souhaitez appliquer une projection à ces résultats sans filtrage préalable.
+
+Attention
+
+Pour récupérer les ids des entités, vous pouvez utiliser une projection simple qui ne sélectionne que l’identifiant de l’entité, mais vous ne pouvez pas faire ceci :
+
+List<Long> ids = findAll()
+    .project(Long.class)
+    .list();
+Panache ne supporte pas les projections directes sur des types simples comme Long, String, etc. puisqu’ils ne disposent pas de l’annotation @RegisterForReflection. À la place, vous devez créer une projection personnalisée qui encapsule l’identifiant.
+
+10.7.2. Projection imbriquée
+Pour une projection plus complexe, vous pouvez également définir des projections imbriquées.
+
+Si vous souhaitez récupérer les informations d’un astronaute ainsi que les détails de son vaisseau spatial, vous pouvez définir deux projections comme suit :
+
+AstronautProjection.java
+@RegisterForReflection
+public record AstronautProjection(
+
+    UUID uuid,
+    String nickname,
+    Ship ship
+
+) {
+
+    @NestedProjectedClass
+    public record Ship(String name) {}
+
+}
+Notez l’utilisation de l’annotation @NestedProjectedClass pour indiquer que la classe Ship est une projection imbriquée. Cela permet à Quarkus de gérer correctement la projection des objets imbriqués lors de l’exécution.
+
+Attention
+
+Les projections ne prennent en charge que les classes ou records avec des constructeurs correspondant aux attributs projetés . Assurez-vous que les noms et types des attributs dans la projection correspondent exactement à ceux de l’entité source. Sinon, vous pourriez rencontrer des erreurs lors de l’exécution.
+
+Avec ce type de projection, lorsque vous récupérez un astronaute, vous obtiendrez également les informations de son vaisseau spatial dans un objet imbriqué, comme ceci :
+
+{
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
+    "nickname": "Ash",
+    "ship": {
+        "name": "Nostromo"
+    }
+}
+Si vous souhaitez un résultat à plat, vous pouvez opter pour les @ProjectedFieldName, ce qui donnerait :
+
+AstronautProjection.java
+@RegisterForReflection
+public record AstronautProjection(
+
+    UUID uuid,
+    String nickname,
+    @ProjectedFieldName("ship.name")
+    String shipName
+
+) { }
+Cela produirait un résultat JSON comme ceci :
+
+{
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
+    "nickname": "Ash",
+    "shipName": "Nostromo"
+}
+Attention
+
+Les projections Panache ORM ne prennent pas en charge les relations @OneToMany ou @ManyToMany. Si vous avez besoin de projeter des collections, vous devrez gérer cela manuellement dans votre code.
+
+10.7.3. Utiliser la projection dans une requête Panache
+Les projections imbriquées sont utilisées de la même manière.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public Optional<AstronautProjection> findAstronautsWithShip(Long id) {
+        return find("id", id)
+                .project(AstronautProjection.class)
+                .firstResultOptional();
+    }
+
+}
+Ici, nous utilisons la méthode project pour spécifier que nous souhaitons projeter les résultats dans la classe AstronautProjection, qui inclut une projection imbriquée pour le vaisseau spatial. La méthode firstResultOptional renvoie un Optional contenant l’objet projeté si un résultat est trouvé, ou vide sinon.
+
+Note
+
+Dans le cadre des projections, les méthodes de type findBy... ne sont pas utilisées, car elles sont conçues pour retourner des entités complètes. Au lieu de cela, nous utilisons la méthode find avec une condition spécifique pour filtrer les résultats avant d’appliquer la projection.
+
+10.8. Tri et pagination
+La gestion du tri et de la pagination des résultats est une fonctionnalité essentielle dans de nombreuses applications. Avec Panache ORM dans Quarkus, vous pouvez facilement implémenter ces fonctionnalités pour améliorer l’expérience utilisateur et optimiser les performances de votre application.
+
+10.8.1. Tri des résultats
+Le tri des résultats permet d’afficher les données dans un ordre spécifique, que ce soit par ordre croissant ou décroissant, en fonction d’un ou plusieurs champs.
+
+Avec Panache, vous pouvez écrire la partie de la requête restante avec la clause order by pour spécifier les champs par lesquels vous souhaitez trier les résultats.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<Astronaut> findAllSorted() {
+        return find("order by ship.name, nickname").list();
+    }
+
+}
+Une approche plus orientée objet, consiste à utiliser un objet Sort qui facilite la définition des critères de tri.
+
+Sort.by
+Sort sort = Sort.by("nickname");
+Sort.by avec plusieurs critères
+Sort sort = Sort.by("ship.name").and("nickname");
+Sort.by en récupérant les valeurs nulls en premier avec l’option Sort.NullPrecedence
+Sort sort = Sort.by("ship.name", Sort.NullPrecedence.NULLS_FIRST);
+Sort.by en récupérant les valeurs nulls en dernier avec l’option Sort.NullPrecedence
+Sort sort = Sort.by("ship.name", Sort.NullPrecedence.NULLS_LAST);
+Sort.descending pour un tri décroissant
+Sort sort = Sort.descending("nickname");
+Sort.ascending pour un tri croissant (déjà par défaut)
+Sort sort = Sort.ascending("nickname");
+Combinaison de tri croissant et décroissant avec l’option Sort.Direction
+Sort sort = Sort.by("ship.name").and("nickname", Sort.Direction.DESCENDING);
+Tri avec récupération des valeurs nulls en premier et dernier combiné, ordre croissant et décroissant
+Sort sort = Sort.by("ship.name", Sort.NullPrecedence.NULLS_FIRST)
+            .and("nickname", Sort.Direction.DESCENDING, Sort.NullPrecedence.NULLS_LAST);
+10.8.2. Tri simple
+Voici un exemple de méthode dans un repository qui permet de trier les résultats par nom de vaisseau et surnom d’astronaute avec l’objet Sort pour définir les critères de tri dans un listAll :
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<Astronaut> findAllSorted() {
+        return listAll(Sort.by("ship.name").and("nickname"));
+    }
+
+}
+10.8.3. Tri avec filtres
+Pour les cas de requête avec filtre, vous pouvez passer les critères de tri en paramètres en respectant cet ordre :
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<Astronaut> findAllByShipNameSorted(String shipName) {
+        return find("ship.name", Sort.by("birthdate").and("nickname"), shipName)
+                .list();
+    }
+
+}
+10.8.4. Tri avec named query
+Avertissement
+
+Vous ne pouvez pas utiliser l’objet Sort avec une named query. Vous devez impérativement écrire la clause order by dans la définition de la named query elle-même.
+
+10.8.5. Tri avec projection
+Vous pouvez utiliser une projection pour ne récupérer que certains champs tout en appliquant le tri.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<AstronautInfo> findAllByShipNameSorted(String shipName) {
+        return findAll("ship.name", Sort.by("birthdate").and("nickname"), shipName)
+                .project(AstronautInfo.class)
+                .list();
+    }
+
+}
+10.9. Pagination des résultats
+La pagination est une technique utilisée pour diviser les résultats d’une requête en pages plus petites, ce qui est particulièrement utile lorsque vous travaillez avec de grandes quantités de données. Avec Panache ORM, la pagination est simple à mettre en œuvre grâce à la méthode page à laquelle vous pouvez passer le numéro de page et la taille de la page.
+
+Pour rendre possible la personnalisation de ces paramètres de pagination, vous pouvez très facilement les exposer via des paramètres dans vos endpoints REST.
+
+AstronautResource.java
+@GET
+public List<Astronaut> getAstronauts(
+        @QueryParam("page") @DefaultValue("0") int page,
+        @QueryParam("size") @DefaultValue("10") int size) {
+    return astronautService.findAll(page, size);
+}
+10.9.1. Pagination simple
+Voici un exemple de méthode dans un repository qui permet de paginer les résultats avec une taille de page spécifique et un numéro de page donné :
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<Astronaut> findAllPaginated(int pageNumber, int pageSize) {
+        return findAll()
+                .page(pageNumber, pageSize)
+                .list();
+    }
+
+}
+10.9.2. Pagination avec tri
+Vous pouvez également combiner la pagination avec le tri des résultats en utilisant l’objet Sort.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<Astronaut> findAllPaginatedAndSorted(int pageNumber, int pageSize) {
+        return findAll(Sort.by("nickname"))
+                .page(pageNumber, pageSize)
+                .list();
+    }
+
+}
+10.9.3. Pagination avec filtres
+La pagination peut également être appliquée aux requêtes avec des filtres.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<Astronaut> findAllByShipNamePaginated(String shipName, int pageNumber, int pageSize) {
+        return find("ship.name", shipName)
+                .page(pageNumber, pageSize)
+                .list();
+    }
+
+}
+10.9.4. Pagination avec named query
+Contrairement au tri, vous pouvez utiliser la pagination Panache avec une named query.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository extends BaseRepository<Astronaut> {
+
+    public List<Astronaut> findAstronautsByShipNamePaginated(String shipName, int pageNumber, int pageSize) {
+        return findByNamedQuery("Astronaut.FIND_ASTRONAUTS_BY_SHIP_NAME",
+                    Parameters.with("name", shipName))
+            .page(pageNumber, pageSize)
+            .list();
+    }
+
+}
+10.9.5. Pagination avec projection
+Vous pouvez également utiliser une projection tout en appliquant la pagination.
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public List<AstronautInfo> findAllByShipNamePaginated(String shipName, int pageNumber, int pageSize) {
+        return find("ship.name", shipName)
+                .project(AstronautInfo.class)
+                .page(pageNumber, pageSize)
+                .list();
+    }
+
+}
+Attention
+
+Ce modèle ne fonctionne qu’avec des projections sans collections. Dans le cadre de projections avec des collections (one-to-many, many-to-many), la pagination telle que présentée ci-dessus peut entraîner des résultats inattendus, car elle est appliquée directement au résultat de la requête . Cela veut dire que pour une entité avec une relation one-to-many, la pagination pourrait tronquer les collections associées, menant à des résultats incomplets ou incorrects.
+
+Pour les projections flat avec collections, une approche alternative consiste à d’abord récupérer les identifiants des entités paginées, puis à effectuer une seconde requête pour charger les entités complètes avec leurs collections associées. Cette méthode garantit que la pagination est correctement appliquée au niveau des entités principales, tout en permettant de charger les collections associées de manière appropriée.
+
+10.9.6. Méthodes utilitaires de pagination
+Panache fournit également des méthodes utilitaires pour faciliter la gestion de la pagination et sa navigation, notamment pour obtenir le nombre total de pages et le nombre total d’éléments. Pour en bénéficier, vous devez utiliser un objet PanacheQuery, ce qui suppose de récupérer les résultats dans une autre variable.
+
+PanacheQuery<Astronaut> query = findAll()
+    .page(pageIndex, pageSize);
+
+List<Astronaut> astronauts = query.list();
+
+long totalCount = query.count();
+int totalPages = query.pageCount();
+Voici les principales méthodes utilitaires disponibles sur l’objet PanacheQuery pour la gestion de la pagination :
+
+page().index()
+Retourne le numéro de la page actuelle (indexée à partir de 0).
+
+page().size()
+Retourne la taille de la page définie pour la pagination.
+
+count()
+Retourne le nombre total d’éléments correspondant à la requête, indépendamment de la pagination.
+
+pageCount()
+Retourne le nombre total de pages disponibles en fonction de la taille de la page définie.
+
+hasNextPage()
+Indique s’il existe une page suivante par rapport à la page actuelle.
+
+hasPreviousPage()
+Indique s’il existe une page précédente par rapport à la page actuelle.
+
+nextPage()
+Avance la pagination à la page suivante.
+
+previousPage()
+Recule la pagination à la page précédente.
+
+Solution complète
+
+Voici un exemple concret d’utilisation de ces méthodes utilitaires pour retourner un objet de résultat paginé personnalisé :
+
+Créez un record pour encapsuler les résultats paginés :
+
+PaginatedResult.java
+public record PaginatedResult<T>(
+    List<T> items,
+    int pageIndex,
+    int pageSize,
+    long totalPages,
+    boolean hasPrevious,
+    boolean hasNext,
+    long totalElements
+) {
+    public static <T> PaginatedResult<T> empty() {
+        return new PaginatedResult<>(List.of(), 0, 0, 0, false, false, 0);
+    }
+}
+Indication
+
+On rend cet objet générique avec <T> pour pouvoir l’utiliser avec différentes entités sachant que la pagination est un concept transversal et couramment réutilisé dans les applications.
+
+Définir une méthode empty() statique permet de retourner un objet paginé vide lorsque la requête ne renvoie aucun résultat, ce qui simplifie la gestion des cas où il n’y a pas de données à afficher. Utilisez cet objet dans votre méthode de repository pour retourner les résultats paginés avec les informations supplémentaires :
+
+AstronautRepository.java
+@ApplicationScoped
+public class AstronautRepository implements PanacheRepository<Astronaut> {
+
+    public PaginatedResult<Astronaut> findAllPaginated(int pageNumber, int pageSize) {
+
+        PanacheQuery<Astronaut> query = findAll()
+                    .page(pageNumber, pageSize);
+
+        List<Astronaut> astronauts = query.list();
+
+        if (astronauts.isEmpty()) return PaginatedResult.empty();
+
+        return new PaginatedResult<>(
+            astronauts,
+            query.page().index,
+            query.page().size,
+            query.pageCount(),
+            query.hasPreviousPage(),
+            query.hasNextPage(),
+            query.count()
+        );
+    }
+
+}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <title>Compagnie: {compagnie.nom}</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <a href="/web" class="btn-back">⬅ Retour à l'accueil</a>
+        
+        <header class="app-header" style="padding: 2rem; border-radius: 16px; border: 1px solid var(--card-border);">
+            <h1 class="app-title">{compagnie.nom}</h1>
+            <p class="app-subtitle">Code Compagnie : <span class="badge">{compagnie.idCompagnie}</span></p>
+        </header>
+        
+        <h2 class="section-title">Aperçu de la flotte</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-value">{compagnie.flottes.size}</div>
+                <div class="stat-label">Modèles d'avions exploités</div>
+            </div>
+
+        </div>
+
+        <h2 class="section-title">Détail des modèles</h2>
+        <table class="premium-table">
+            <thead>
+                <tr>
+                    <th>Constructeur & Modèle</th>
+                    <th>Capacité Max</th>
+                    <th>Motorisation</th>
+                    <th>Nombre en flotte</th>
+                </tr>
+            </thead>
+            <tbody>
+                {#for flotte in compagnie.flottes}
+                <tr>
+                    <td><strong>{flotte.avion.constructeur}</strong> {flotte.avion.idAlFull}</td>
+                    <td>{flotte.avion.nbrePassMax} pax</td>
+                    <td>{flotte.avion.moteur.fabricant} {flotte.avion.moteur.idMoteurFull}</td>
+                    <td><span class="badge">{flotte.nombre}</span></td>
+                </tr>
+                {/for}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

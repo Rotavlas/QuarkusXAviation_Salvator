@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <title>Aviation - Accueil</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1 class="app-title">Quarkus x Aviation</h1>
+        <p class="app-subtitle">Système de Gestion de Flotte Aéronautique</p>
+    </header>
+
+    <div class="container">
+        <h2 class="section-title">Compagnies Aériennes</h2>
+        <div class="grid">
+            {#for compagnie in compagnies}
+            <a href="/web/compagnie/{compagnie.idCompagnie}" class="card">
+                <div class="card-title">{compagnie.nom}</div>
+                <div class="card-subtitle">Code IATA: {compagnie.idCompagnie}</div>
+                <div class="card-icon">✈️</div>
+            </a>
+            {/for}
+        </div>
+
+        <h2 class="section-title">Catalogue des Avions</h2>
+        <div class="grid">
+            {#for avion in avions}
+            <a href="/web/avion/{avion.idAl}" class="card">
+                <div class="card-title">{avion.constructeur}</div>
+                <div class="card-subtitle">{avion.idAlFull}</div>
+                <div class="card-icon">🛫</div>
+            </a>
+            {/for}
+        </div>
+    </div>
+</body>
+</html>

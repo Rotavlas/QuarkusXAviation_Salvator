@@ -1,0 +1,116 @@
+4. Stocker des mots de passe dans une base Oracle
+Quand la sécurité des utilisateurs est gérée au sein d’une application il est nécessaire de stocker les mots de passe au sein d’une table. Ce stockage peut mener à des risques de sécurité et de fuites dès lors que des utilisateurs ont les droits de lecture sur cette table.
+
+L’approche commune pour « corriger » ce problème est d’encrypter les mots de passe avant leurs enregistrements. Le problème de l’encryption c’est que cela implique la possibilité de décrypter le mot de passe et donc un potentiel trou de sécurité.
+
+Une meilleure approche est de stocker un hash du mot de passe. Dans ce chapitre nous allons explorer les possibilités offertes par le package DBMS_OBFUSCATION_TOOLKIT.
+
+4.1. Table d’utilisateurs
+Création de la structure de la table de nos utilisateurs
+CREATE TABLE app_users (
+    id        NUMBER(10)    NOT NULL,
+    username  VARCHAR2(30)  NOT NULL,
+    password  VARCHAR2(40)  NOT NULL
+);
+
+ALTER TABLE app_users ADD (
+    CONSTRAINT app_users_pk PRIMARY KEY (id)
+);
+
+ALTER TABLE app_users ADD (
+    CONSTRAINT app_users_uk UNIQUE (username)
+);
+
+CREATE SEQUENCE app_users_seq;
+4.2. Package PL/SQL Security
+Avertissement
+
+Le package DBMS_CRYPTO appartient à l’utilisateur sys (qui est différent de system). Il convient de vous connecter à l’utilisateur sys avec le rôle sysdba (et le même mot de passe que l’utilisateur system) et de donner les droit d’exécution de ce package à notre utilisateur:
+
+GRANT EXECUTE on DBMS_CRYPTO to emp;
+Entête de notre package Security
+CREATE OR REPLACE PACKAGE app_user_security AS
+
+    FUNCTION get_hash (p_username IN VARCHAR2, p_password IN VARCHAR2) RETURN VARCHAR2;
+
+    PROCEDURE add_user (p_username IN VARCHAR2, p_password IN VARCHAR2);
+
+    PROCEDURE change_password (p_username IN VARCHAR2, p_old_password IN VARCHAR2, p_new_password IN  VARCHAR2);
+
+    PROCEDURE valid_user (p_username IN VARCHAR2,p_password IN VARCHAR2);
+
+    FUNCTION valid_user (p_username IN VARCHAR2, p_password IN VARCHAR2) RETURN BOOLEAN;
+
+END;
+/
+Corps de notre package Security
+CREATE OR REPLACE PACKAGE BODY app_user_security AS
+
+    FUNCTION get_hash (p_username IN VARCHAR2, p_password IN VARCHAR2) RETURN VARCHAR2 AS
+        salt VARCHAR2(30) := 'MonGrainDeSel';
+    BEGIN
+        RETURN DBMS_CRYPTO.HASH(UTL_RAW.CAST_TO_RAW(UPPER(p_username) || salt || UPPER(p_password)),DBMS_CRYPTO.HASH_SH1);
+    END;
+
+    PROCEDURE add_user (p_username IN VARCHAR2, p_password IN VARCHAR2) AS
+    BEGIN
+        INSERT INTO app_users (id, username, password)
+        VALUES (app_users_seq.NEXTVAL, UPPER(p_username), get_hash(p_username, p_password));
+        COMMIT;
+    END;
+
+    PROCEDURE change_password (p_username IN VARCHAR2, p_old_password IN VARCHAR2, p_new_password IN VARCHAR2)  AS
+    v_rowid  ROWID;
+    BEGIN
+        SELECT rowid INTO v_rowid FROM app_users
+        WHERE username = UPPER(p_username) AND password = get_hash(p_username, p_old_password) FOR UPDATE;
+
+        UPDATE app_users SET password = get_hash(p_username, p_new_password)
+        WHERE rowid = v_rowid;
+
+        COMMIT;
+        EXCEPTION WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20000, 'Invalid username/password.');
+    END;
+
+    PROCEDURE valid_user (p_username IN VARCHAR2, p_password IN VARCHAR2) AS
+        v_dummy VARCHAR2(1);
+    BEGIN
+        SELECT '1' INTO v_dummy
+        FROM app_users
+        WHERE username = UPPER(p_username)
+        AND password = get_hash(p_username, p_password);
+        EXCEPTION WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20000, 'Invalid username/password.');
+    END;
+
+    FUNCTION valid_user (p_username IN VARCHAR2, p_password IN VARCHAR2) RETURN BOOLEAN AS
+    BEGIN
+        valid_user(p_username, p_password);
+        RETURN TRUE;
+        EXCEPTION WHEN OTHERS THEN
+            RETURN FALSE;
+    END;
+
+END;
+/
+4.3. Utilisation du package Security
+Création d’un utilisateur
+EXEC app_user_security.add_user('sam','password');
+Quelques tests de notre package
+EXEC app_user_security.valid_user('sam','password');
+
+EXEC app_user_security.valid_user('sam','password1');
+
+
+SET SERVEROUTPUT ON
+BEGIN
+IF app_user_security.valid_user('sam','password') THEN
+    DBMS_OUTPUT.PUT_LINE('TRUE');
+ELSE
+    DBMS_OUTPUT.PUT_LINE('FALSE');
+END IF;
+END;
+/
+
+EXEC app_user_security.change_password('sam','password','password1');

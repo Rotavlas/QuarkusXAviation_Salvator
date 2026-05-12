@@ -1,0 +1,157 @@
+5. Types abstraits de données (TAD)
+Il est possible de définir ses propres types (types abstraits de données ou TAD) qui seront ensuite réutilisés dans la définition des relations.
+
+Ce sont des types d’objets car il est possible de leur associer des méthodes, qui sont des procédures ou des fonctions. L’objectif est de considérer un groupe de colonnes comme un tout, comme une seule entité.
+
+Important
+
+Aucune instance n’est associée au TAD, il faut l’associer à une relation.
+
+5.1. Définition d’un TAD
+create or replace type TNom as object
+(
+    element1,
+    element2
+);
+/
+Indication
+
+Après la création d’un TAD, le / remplace le ; pour terminer l’ordre SQL.
+
+Exemple
+CREATE OR REPLACE TYPE TYPE_VERSION AS OBJECT(
+    VERSION NUMBER(4, 1),
+    MEMBER FUNCTION GET_VERSION RETURN NUMBER
+) NOT FINAL;
+/
+
+CREATE OR REPLACE TYPE BODY TYPE_VERSION AS
+    MEMBER FUNCTION GET_VERSION RETURN NUMBER IS
+    BEGIN
+        RETURN VERSION;
+    END;
+END;
+/
+Nous pouvons dès lors utilisé notre nouveau type dans une procédure anonyme
+
+DECLARE
+version TYPE_VERSION;
+BEGIN
+    version := TYPE_VERSION(123.3);
+    DBMS_OUTPUT.PUT_LINE(version.GET_VERSION());
+END;
+Avertissement
+
+Un type ne peut être supprimé ou recréé que si aucune table ne l’utilise. Sinon, il faut utiliser la clause alter type. La clause CASCADE permet alors de faire le changement sur tous les types et objets dépendants
+
+Indication
+
+Il est possible de surcharger des noms de méthode. On déclare alors deux méthodes avec le même nom et des paramètres différents et Oracle choisit la méthode à exécuter.
+
+Il est possible d’utiliser le paramètre self dans le corps de la méthode.
+
+L’appel des méthodes s’effectue de la même manière que pour les fonctions et procédures stockées en indiquant le chemin avec la notation pointée comme pour les attributsself
+
+Il est possible de ré-utiliser ce TAD pour:
+
+Définir une TAD en colonne de table
+
+Définir un autre TAD
+
+Définir une table d’objets
+
+Associer un attribut à une table d’objets
+
+5.2. TAD en colonne de table
+CREATE TABLE SOFTWARE(
+    SOFTNO INTEGER PRIMARY KEY,
+    VERSION TYPE_VERSION
+);
+Prudence
+
+SOFTWARE n’est pas une table d’objets. Il n’y a pas de mécanisme d”OID.
+
+5.3. Définir un autre TAD
+Il s’agit de définir un autre type à partir d’un type de base, il s’agit donc d’héritage en OOP.
+
+CREATE OR REPLACE TYPE TYPE_SOFTWARE UNDER TYPE_VERSION(
+    NAME VARCHAR2(150),
+    MEMBER FUNCTION GET_NAME RETURN VARCHAR2
+)NOT FINAL;
+/
+
+CREATE OR REPLACE TYPE BODY TYPE_SOFTWARE AS
+    MEMBER FUNCTION GET_NAME RETURN VARCHAR2 IS
+    BEGIN
+        RETURN NAME;
+    END;
+END;
+/
+Et un exemple d’utilisation de cette classe d’objet
+
+DECLARE
+    soft MODEL_SOFTWARE;
+BEGIN
+    soft := MODEL_SOFTWARE(123.3, 'Firefox');
+    DBMS_OUTPUT.PUT_LINE(soft.GET_NAME() || ', ' || soft.GET_VERSION());
+END;
+/
+5.4. Définir une table d’objets
+CREATE TABLE SOFTWARES OF TYPE_SOFTWARE;
+Important
+
+SOFTWARES est alors une table d’objets avec gestion des OID associés.
+
+INSERT INTO SOFTWARES VALUES (TYPE_SOFTWARE(126.0, 'Firefox'));
+5.4.1. OID
+Dans une table d’objet, chaque n-uplet possède un identifiant d’objet (OID ou Object Identifier).
+
+Note
+
+L’OID est affecté par le système, il permet :
+
+d’identifier de manière unique ce n-uplet,
+
+de référencer cet objet de manière explicite.
+
+5.4.2. REF
+La fonction REF permet d’accéder à l’OID des objets concernés.
+
+SELECT REF(soft) FROM SOFTWARES soft;
+Indication
+
+La fonction REF ne s’applique qu’aux objets et non aux colonnes associées à un TAD.
+
+5.5. Associer un attribut à une table d’objets
+CREATE TABLE SOFTWARES_INVENTORIES(
+    ID INTEGER,
+    SUPPORT VARCHAR(200) NOT NULL,
+    LICENCEDATE DATE NOT NULL,
+    SOFTWARE_MODEL REF TYPE_SOFTWARE NOT NULL
+);
+INSERT INTO SOFTWARES_INVENTORIES VALUES (100, 'VHS',  TO_DATE('1988-05-04', 'YYYY-mm-dd'),
+                             (SELECT REF(soft) FROM SOFTWARES soft
+                              WHERE soft.NAME = 'Firefox'
+                              AND soft.VERSION = 126.0));
+SELECT ID, SUPPORT, LICENCEDATE, VERSION, NAME
+FROM SOFTWARES_INVENTORIES
+INNER JOIN SOFTWARES soft ON SOFTWARE_MODEL = REF(soft);
+5.5.1. DEREF
+La fonction DEREF est l’inverse de REF et sert, à partir d’un OID, à accéder à l’objet associé.
+
+SELECT ID, SUPPORT, LICENCEDATE, DEREF(SOFTWARE_MODEL) FROM SOFTWARES_INVENTORIES;
+5.6. 📚 Collections
+Note
+
+Une collection est un type de données générique défini afin de supporter un ensemble d’objets (scalaires ou enregistrements).
+
+Synonymes : Collection d’objets
+
+5.6.1. Définition d’une collection
+Les objets d’une collection peuvent être d’un type simple (collection de scalaire) ou d’un type utilisateur (collection d’enregistrements).
+
+Un tableau Varray est un tableau de taille limitée à longueur variable. Il est représenté par une seule valeur de type n-uplet dans la table.
+
+CREATE OR REPLACE TYPE ARR_NAME AS VARRAY(MAX) of <DATATYPE>;
+Exemple de définition d’un tableau
+CREATE OR REPLACE TYPE PHONE AS VARRAY(33) OF CHAR;

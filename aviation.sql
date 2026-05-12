@@ -1,0 +1,287 @@
+CREATE TABLE IF NOT EXISTS AVIONS_LIGNE (
+
+  ID_AL VARCHAR2(5) NOT NULL,
+
+  ID_ALFULL VARCHAR2(15) NOT NULL,
+
+  CONSTRUCTEUR VARCHAR2(10) NOT NULL,
+
+  FAMILLE VARCHAR2(5) NOT NULL,
+
+  SERIE VARCHAR2(5) NOT NULL,
+
+  MODELE VARCHAR2(10) NOT NULL,
+
+  NBREMOTEURS INTEGER NOT NULL,
+
+  ID_MOTEUR VARCHAR2(20) NOT NULL,
+
+  ENVERGURE NUMBER(5,2) NOT NULL,
+
+  LONGUEUR NUMBER(5,2) NOT NULL,
+
+  HAUTEUR NUMBER(5,2) NOT NULL,
+
+  LARGEURFUSELAGE NUMBER(5,2) NOT NULL,
+
+  LARGEURCABINE NUMBER(5,2) NOT NULL,
+
+  NBREPASSMIN INTEGER DEFAULT 0 NOT NULL,
+
+  NBREPASSMAX INTEGER DEFAULT 0 NOT NULL,
+
+  VOLUMECARGO INTEGER NOT NULL,
+
+  LD3 INTEGER NOT NULL,
+
+  MISEENSERVICE DATE DEFAULT NULL
+
+);
+
+
+
+
+
+COMMENT ON COLUMN AVIONS_LIGNE.ID_ALFULL IS 'ID de l''avion';
+
+COMMENT ON COLUMN AVIONS_LIGNE.CONSTRUCTEUR IS 'Nom du constructeur';
+
+COMMENT ON COLUMN AVIONS_LIGNE.ENVERGURE IS '(m)';
+
+COMMENT ON COLUMN AVIONS_LIGNE.LONGUEUR IS '(m)';
+
+COMMENT ON COLUMN AVIONS_LIGNE.HAUTEUR IS '(m)';
+
+COMMENT ON COLUMN AVIONS_LIGNE.LARGEURFUSELAGE IS '(m)';
+
+COMMENT ON COLUMN AVIONS_LIGNE.LARGEURCABINE IS '(m)';
+
+COMMENT ON COLUMN AVIONS_LIGNE.VOLUMECARGO IS '(m²)';
+
+
+
+CREATE TABLE IF NOT EXISTS COMPAGNIES_AERIENNES (
+
+  ID_COMPAGNIE VARCHAR2(2) NOT NULL,
+
+  NOM VARCHAR2(20) NOT NULL
+
+);
+
+
+
+COMMENT ON TABLE COMPAGNIES_AERIENNES IS 'Compagnies aériennes';
+
+
+
+
+
+CREATE TABLE IF NOT EXISTS FLOTTES_PASSAGERS (
+
+  ID_FPASS VARCHAR2(5) NOT NULL,
+
+  ID_COMPAGNIE VARCHAR2(2) NOT NULL,
+
+  ID_AL VARCHAR2(5) NOT NULL,
+
+  NOMBRE INTEGER NOT NULL
+
+);
+
+
+
+COMMENT ON TABLE COMPAGNIES_AERIENNES IS 'Flotte transport passagers';
+
+
+
+CREATE TABLE IF NOT EXISTS MOTEURS (
+
+  ID_MOTEUR VARCHAR2(4) NOT NULL,
+
+  ID_MOTEURFULL VARCHAR2(25) NOT NULL,
+
+  TYPE VARCHAR2(15) NOT NULL,
+
+  FABRICANT VARCHAR2(30) NOT NULL,
+
+  FAMILLE VARCHAR2(10) NOT NULL,
+
+  SERIE VARCHAR2(10),
+
+  MODELE VARCHAR2(10) NOT NULL,
+
+  POUSSEE NUMBER(5,2) NOT NULL,
+
+  LONGUEUR INTEGER NOT NULL
+
+);
+
+
+
+COMMENT ON TABLE MOTEURS IS 'Moteurs pour avion de ligne';
+
+COMMENT ON COLUMN MOTEURS.POUSSEE IS 'Poussée maximale au décollage (kN)';
+
+COMMENT ON COLUMN MOTEURS.LONGUEUR IS '(mm)';
+
+
+
+
+
+
+
+INSERT INTO AVIONS_LIGNE (ID_AL, ID_ALFULL, CONSTRUCTEUR, FAMILLE, SERIE, MODELE, NBREMOTEURS, ID_MOTEUR, ENVERGURE, LONGUEUR, HAUTEUR, LARGEURFUSELAGE, LARGEURCABINE, NBREPASSMIN, NBREPASSMAX, VOLUMECARGO, LD3, MISEENSERVICE) VALUES
+
+('AL1', 'A350-800', 'Airbus', '350', '100', '800', 2, 'M7', 64.75, 60.64, 17.05, 5.96, 5.61, 276, 312, 0, 28, TO_DATE('2000-01-01', 'YYYY-MM-DD')),
+
+('AL10', 'A320-214', 'Airbus', '320', '200', '214', 2, 'M15', 35.80, 37.57, 11.76, 3.95, 3.70, 150, 180, 0, 7, TO_DATE('1987-04-18', 'YYYY-MM-DD')),
+
+('AL11', 'A321-211', 'Airbus', '320', '200', '211', 2, 'M16', 35.80, 44.51, 11.76, 3.95, 3.70, 185, 236, 0, 10, TO_DATE('1993-03-11', 'YYYY-MM-DD')),
+
+('AL12', 'A321-212', 'Airbus', '320', '200', '212', 2, 'M17', 35.80, 44.51, 11.76, 3.95, 3.70, 185, 236, 10, 10, TO_DATE('1993-03-11', 'YYYY-MM-DD')),
+
+('AL13', 'A321-131', 'Airbus', '320', '100', '131', 2, 'M18', 35.80, 44.51, 11.76, 3.95, 3.70, 185, 236, 0, 10, TO_DATE('1993-03-11', 'YYYY-MM-DD')),
+
+('AL14', 'A321-231', 'Airbus', '320', '200', '231', 2, 'M19', 35.80, 44.51, 11.76, 3.95, 3.70, 185, 236, 0, 10, TO_DATE('1993-03-11', 'YYYY-MM-DD')),
+
+('AL15', 'A350-941', 'Airbus', '350', '900', '941', 2, 'M8', 64.75, 66.89, 17.05, 5.96, 5.61, 315, 366, 0, 36, TO_DATE('2015-01-15', 'YYYY-MM-DD')),
+
+('AL2', 'B777-300ER', 'Boeing', '777', '300', '300ER', 2, 'M1', 64.80, 73.90, 18.50, 6.20, 5.87, 365, 550, 216, 0, TO_DATE('2000-01-01', 'YYYY-MM-DD')),
+
+('AL3', 'B777F', 'Boeing', '777', '300', 'F', 2, 'M2', 64.80, 63.70, 18.50, 6.20, 5.87, 0, 0, 653, 0, TO_DATE('2000-01-01', 'YYYY-MM-DD')),
+
+('AL4', 'B777-200ER', 'Boeing', '777', '300', '200ER', 2, 'M2', 60.90, 63.70, 18.50, 6.20, 5.87, 301, 440, 162, 0, NULL),
+
+('AL5', 'A380-841', 'Airbus', '380', '800', '841', 4, 'M11', 79.75, 72.72, 24.09, 7.14, 6.54, 525, 853, 0, 38, TO_DATE('2007-10-25', 'YYYY-MM-DD')),
+
+('AL6', 'A380-861', 'Airbus', '380', '800', '861', 4, 'M10', 79.75, 72.72, 24.09, 7.14, 6.54, 525, 853, 0, 38, TO_DATE('2007-10-25', 'YYYY-MM-DD')),
+
+('AL7', 'A380-800', 'Airbus', '380', '800', '842', 4, 'M12', 79.75, 72.72, 24.09, 7.14, 6.54, 525, 853, 0, 38, TO_DATE('2007-10-25', 'YYYY-MM-DD')),
+
+('AL8', 'B747-8', 'Boeing', '747', 'SP', '8I', 4, 'M13', 68.45, 76.25, 19.35, 0.00, 6.10, 467, 605, 162, 0, TO_DATE('2012-06-01', 'YYYY-MM-DD')),
+
+('AL9', 'ERJ190-100', 'Embraer', 'E-Jet', '100', 'E-190', 2, 'M14', 28.72, 36.24, 10.28, 3.01, 2.74, 94, 114, 0, 0, TO_DATE('2004-03-17', 'YYYY-MM-DD'));
+
+
+
+INSERT INTO COMPAGNIES_AERIENNES (ID_COMPAGNIE, NOM) VALUES
+
+('AF', 'Air France'),
+
+('AI', 'Air India'),
+
+('BA', 'British Airways'),
+
+('EK', 'Emirates'),
+
+('LH', 'Lufthansa'),
+
+('QF', 'Quantas'),
+
+('QR', 'Qatar Airways');
+
+
+
+INSERT INTO FLOTTES_PASSAGERS (ID_FPASS, ID_COMPAGNIE, ID_AL, NOMBRE) VALUES
+
+('FP1', 'BA', 'AL2', 12),
+
+('FP10', 'LH', 'AL8', 15),
+
+('FP11', 'BA', 'AL9', 11),
+
+('FP12', 'AF', 'AL10', 40),
+
+('FP13', 'AF', 'AL11', 10),
+
+('FP14', 'AF', 'AL12', 10),
+
+('FP15', 'LH', 'AL13', 19),
+
+('FP16', 'AI', 'AL11', 18),
+
+('FP17', 'AI', 'AL2', 12),
+
+('FP18', 'QR', 'AL15', 2),
+
+('FP19', 'QR', 'AL6', 4),
+
+('FP2', 'BA', 'AL5', 9),
+
+('FP20', 'QR', 'AL14', 7),
+
+('FP3', 'AF', 'AL2', 39),
+
+('FP4', 'AF', 'AL4', 25),
+
+('FP5', 'AF', 'AL6', 10),
+
+('FP6', 'EK', 'AL2', 102),
+
+('FP7', 'QF', 'AL7', 12),
+
+('FP8', 'EK', 'AL6', 59),
+
+('FP9', 'LH', 'AL5', 12);
+
+
+
+
+
+INSERT INTO MOTEURS (ID_MOTEUR, ID_MOTEURFULL, TYPE, FABRICANT, FAMILLE, SERIE, MODELE, POUSSEE, LONGUEUR) VALUES
+
+('M1', 'GE90-115B', 'Turboréacteur', 'General Electrics', 'GE90', '', '115B', 512.00, 7289),
+
+('M10', 'GP7270', 'Turboréacteur', 'Engine Alliance', 'GP', '7200', '70', 332.00, 4740),
+
+('M11', 'RR RB211 Trent 970-84', 'Turboréacteur', 'Rolls-Royce', 'Trent', '900', '970', 334.00, 5477),
+
+('M12', 'RR RB211 Trent 972-84', 'Turboréacteur', 'Rolls-Royce', 'Trent', '900', '972-84', 341.00, 5477),
+
+('M13', 'GEnx-2B-67', 'Turboréacteur', 'General Electrics', 'GEnx', '2B', '67', 296.00, 4310),
+
+('M14', 'GE CF34-10E', 'Turboréacteur', 'General Electrics', 'CF34', '10', '10E', 89.00, 3700),
+
+('M15', 'CFM56-5B4', 'Turboréacteur', 'CFM International', 'CFM56', '5B', '5B4', 120.00, 2500),
+
+('M16', 'CFM56-5B3', 'Turboréacteur', 'CFM International', 'CFM56', '5B', '5B3', 150.00, 2500),
+
+('M17', 'CFM56-5B1', 'Turboréacteur', 'CFM International', 'CFM56', '5B', '5B1', 130.00, 2500),
+
+('M18', 'IAE V2530-A5', 'Turboréacteur', 'International Aero Engines', 'V2500', '', 'V2530-A5', 140.00, 3200),
+
+('M19', 'IAE V2533-A5', 'Turboréacteur', 'International Aero Engines', 'V2500', '', 'V2533-A5', 147.00, 3200),
+
+('M2', 'GE90-94B', 'Turboréacteur', 'General Electrics', 'GE90', '', '94B', 425.00, 7289),
+
+('M3', 'PW4090', 'Turboréacteur', 'Pratt' || '&' || 'Whitney', 'PW4000', '112', 'PW4090', 400.00, 4851),
+
+('M5', 'RR RB211 Trent 977-84', 'Turboréacteur', 'Rolls-Royce', 'Trent', '900', '977-84', 359.00, 5477),
+
+('M6', 'RR RB211 Trent 977B-84', 'Turboréacteur', 'Rolls-Royce', 'Trent', '900', '977B-84', 373.00, 5477),
+
+('M7', 'RR Trent XWB-75', 'Turboréacteur', 'Rolls-Royce', 'Trent', '1700', '75', 337.00, 5218),
+
+('M8', 'RR Trent XWB-84', 'Turboréacteur', 'Rolls-Royce', 'Trent', '1700', '84', 374.00, 5218),
+
+('M9', 'RR Trent XWB-97', 'Turboréacteur', 'Rolls-Royce', 'Trent', '1700', '97', 432.00, 5218);
+
+
+
+
+
+
+
+ALTER TABLE AVIONS_LIGNE ADD PRIMARY KEY (ID_AL);
+
+
+
+ALTER TABLE COMPAGNIES_AERIENNES ADD PRIMARY KEY (ID_COMPAGNIE);
+
+
+
+ALTER TABLE FLOTTES_PASSAGERS ADD PRIMARY KEY (ID_FPASS);
+
+
+
+ALTER TABLE MOTEURS ADD PRIMARY KEY (ID_MOTEUR);

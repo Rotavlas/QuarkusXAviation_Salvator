@@ -1,0 +1,92 @@
+7. Vues objet
+L’objectif des vues objets est d’implémenter une structure orientée objet sur des tables relationnelles plates.
+
+Ce principe est très intéressant puisqu’il permet de faire cohabiter une ancienne base relationnelle avec une nouvelle base objet, ou bien de conserver les acquis du relationnel tout en montrant une base objet à l’utilisateur.
+
+Indication
+
+Le mécanisme d’OID se base sur la clé primaire.
+
+Pour créer une vue objet, on procédera selon les étapes suivantes :
+
+Création des tables relationnelles
+
+Création des types de données abstraits
+
+Création de la vue objet
+
+7.1. Transformation de deux tables
+CREATE TABLE DEPT(
+    DEPTNO INTEGER PRIMARY KEY,
+    DNAME VARCHAR2(50)
+);
+CREATE TABLE EMP(
+    EMPNO INTEGER PRIMARY KEY,
+    ENAME VARCHAR2(50),
+    DEPTNO INTEGER
+);
+CREATE TYPE T_DEPT AS OBJECT (
+    DEPTNO INTEGER,
+    DNAME VARCHAR2(50)
+);
+/
+CREATE TYPE T_EMP AS OBJECT (
+    EMPNO INTEGER,
+    ENAME VARCHAR2(50),
+    DEPT REF T_DEPT
+);
+/
+CREATE VIEW VODEPT OF T_DEPT WITH OBJECT OID(DEPTNO) AS
+SELECT DEPT.DEPTNO, DEPT.DNAME
+FROM DEPT;
+CREATE VIEW VOEMP of T_EMP WITH OBJECT OID(EMPNO) AS
+SELECT EMP.EMPNO, EMP.ENAME, MAKE_REF(VODept, EMP.DEPTNO)
+FROM EMP;
+Note
+
+La clause object oid indique à Oracle sur quelle colonne s’appuyer pour construire les OID.
+
+Insérons quelques données.
+
+INSERT INTO DEPT VALUES(10, 'IT');
+INSERT INTO DEPT VALUES(20, 'DNA');
+INSERT INTO EMP VALUES(101, 'Ben Kenobi', 10);
+INSERT INTO EMP VALUES(102, 'Han Solo', 20);
+7.2. Relation inverse au sein d’un objet
+Ajout d’un champs de type liste d’EMP au sein de la vue de département.
+
+CREATE TYPE T_LIST_EMP AS VARRAY(10) OF REF T_EMP;
+Prudence
+
+Ici nous arrivons aux limitations du type VARRAY, nous sommes obligés de définir à l’avance le nombre maximum d’employés par département.
+
+ALTER TYPE T_DEPT ADD ATTRIBUTE EMPS T_LIST_EMP CASCADE;
+CREATE OR REPLACE VIEW VODEPT OF T_DEPT WITH OBJECT OID(DEPTNO) AS
+SELECT DEPT.DEPTNO, DEPT.DNAME, CAST(MULTISET(
+    SELECT MAKE_REF(VOEMP, EMPNO) FROM EMP WHERE EMP.DEPTNO = DEPT.DEPTNO
+)as T_LIST_EMP)
+FROM DEPT;
+7.3. Triggers sur des vues
+Indication
+
+Il est possible de définir des triggers sur les vues objet. Ceci permet de mettre à jour les tables concernées à travers la vue grâce aux triggers de type instead of.
+
+CREATE TRIGGER INSERT_VODEPT_TRIGGER
+INSTEAD OF INSERT ON VODEPT
+FOR EACH ROW
+BEGIN
+
+    INSERT INTO DEPT values(:new.DEPTNO, :new.DNAME);
+
+END;
+INSERT INTO VODEPT VALUES (30, 'HelloWorld', NULL);
+CREATE TRIGGER INSERT_VOEMP_TRIGGER
+INSTEAD OF INSERT ON VOEMP
+FOR EACH ROW
+DECLARE r_dept T_DEPT;
+BEGIN
+    SELECT DEREF(:new.DEPT) INTO r_dept;
+    INSERT INTO EMP values(:new.EMPNO, :new.ENAME, r_dept.DEPTNO);
+
+END;
+INSERT INTO VOEMP VALUES (500, 'ObiWan', MAKE_REF(VODEPT, 10));

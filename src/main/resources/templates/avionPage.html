@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <title>Avion: {avion.idAlFull}</title>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <a href="/web" class="btn-back">⬅ Retour à l'accueil</a>
+
+        <header class="app-header" style="padding: 2rem; border-radius: 16px; border: 1px solid var(--card-border);">
+            <h1 class="app-title">{avion.constructeur} {avion.idAlFull}</h1>
+            <p class="app-subtitle">Fiche Technique Aéronef</p>
+        </header>
+        
+        <h2 class="section-title">Caractéristiques Techniques</h2>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-value">{avion.nbrePassMax}</div>
+                <div class="stat-label">Passagers Max (pax)</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" style="font-size: 1.5rem; line-height: 2.2rem;">{avion.moteur.fabricant}<br><span class="text-gradient">{avion.moteur.idMoteurFull}</span></div>
+                <div class="stat-label">Modèle de Moteur</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value">{avion.moteur.poussee}</div>
+                <div class="stat-label">Poussée (kN)</div>
+            </div>
+        </div>
+
+        <h2 class="section-title">Compagnies exploitant ce modèle</h2>
+        <table class="premium-table">
+            <thead>
+                <tr>
+                    <th>Code IATA</th>
+                    <th>Nom de la compagnie</th>
+                    <th>Appareils en flotte</th>
+                </tr>
+            </thead>
+            <tbody>
+                {#for flotte in flottes}
+                <tr>
+                    <td><span class="badge">{flotte.compagnie.idCompagnie}</span></td>
+                    <td><strong>{flotte.compagnie.nom}</strong></td>
+                    <td><span class="text-gradient" style="font-weight: 700; font-size: 1.1rem;">{flotte.nombre}</span> appareils</td>
+                </tr>
+                {/for}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

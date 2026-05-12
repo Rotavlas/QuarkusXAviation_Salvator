@@ -1,0 +1,219 @@
+8. Oracle Object et JDBC
+Indication
+
+Le but de ce chapitre est de voir comment nous pouvons faire le lien entre nos types personnalisés au sein du SGBDRO Oracle avec un programme JAVA.
+
+Il est chaudement conseillé de se référer à l’utilisation de Java, JDBC et Oracle au travers de ce chapitre : Oracle & Java
+
+Pour la suite de ce chapitre nous nous baserons sur la table d’Employé du chapitre précédents sur les tables imbriquées.
+
+8.1. Lecture d’un tableau de type primitif
+Rien de plus simple pour obtenir un tableau de type primitif, Oracle expose une classe OracleArray qui permet de récupérer un tableau tout en castant son contenu
+
+Lecture d’un array de Number en Java
+Connection connection = DriverManager.getConnection(datasource);
+Statement statement = connection.createStatement();
+ResultSet resultSet = statement.executeQuery("SELECT * FROM EMP");
+while(resultSet.next()){
+    System.out.println(resultSet.getObject("ID"));
+
+    oracle.jdbc.OracleArray arrayTelephones = (OracleArray) resultSet.getArray("TELEPHONES");
+    System.out.println(arrayTelephones.getBaseTypeName());
+    System.out.println(arrayTelephones.length());
+    BigDecimal[] bArray = (BigDecimal[])arrayTelephones.getArray();
+    System.out.println(Arrays.asList(bArray));
+}
+8.2. Le type Struct
+La méthode la plus simple pour lire un objet issu du SGBDRO Oracle est de se reposer sur le type STRUCT. JDBC va matérialiser un objet au sein d’un instance de Struct.
+
+Dans un premier temps nous obtenons un ResultSet
+
+Obtention de nos employées avec JDBC
+Connection connection = DriverManager.getConnection(datasource);
+Statement statement = connection.createStatement();
+ResultSet resultSet = statement.executeQuery("SELECT * FROM EMP");
+while(resultSet.next()){
+    System.out.println(resultSet.getObject("ID"));
+    System.out.println(resultSet.getObject("BUREAU"));
+}
+Puis nous allons itérer sur notre structure pour récupérer les attributs de celle-ci:
+
+Lecture d’une Struct en Java
+oracle.jdbc.OracleStruct struct = (OracleStruct) resultSet.getObject("BUREAU");
+System.out.println(struct.getSQLTypeName());
+Object[] attrs = struct.getAttributes();
+for (Object attr : attrs){
+    System.out.println(attr.getClass());
+    System.out.println(attr);
+}
+Attention
+
+JDBC fourni également un type java.sql.Struct toutefois celui issu de java est plus performant et simple d’emploi, le contre coup étant que notre code source est « moins » portable.
+
+8.3. Mapping d’Objet Oracle vers Java
+Manipuler une instance de Struct n’est ni trivial ni dev-friendly. C’est pour cela que JDBC et Oracle nous propose un mécanisme de customisation pour permettre de mapper automatiquement un type Oracle vers une classe Java.
+
+Pour ce faire nous allons créer une class Java Bureau qui implémente l’interface java.sql.SQLData qui nous demande d’implémenter trois méthodes:
+
+String getSQLTypeName()
+Retourne le nom du type SQL pour lequel la classe peut être mappée
+
+void readSQL(SQLInput stream, String type)
+Permet de lire un objet SQL et de le mapper dans une instance Java
+
+void writeSQL(SQLOutput stream)
+Permet d’écrire une instance Java vers un objet SQL
+
+Classe Java Bureau implémentant l’interface SQLData
+package fr.ugaritic.oracle;
+
+import java.sql.SQLData;
+import java.sql.SQLException;
+import java.sql.SQLInput;
+import java.sql.SQLOutput;
+
+public class Bureau implements SQLData {
+    protected String centre;
+    protected String batiment;
+    protected Integer numero;
+
+    public Bureau(String centre, String batiment, Integer numero) {
+        this.centre = centre;
+        this.batiment = batiment;
+        this.numero = numero;
+    }
+
+    public Bureau() {
+    }
+
+    public String getCentre() {
+        return centre;
+    }
+
+    @Override
+    public String toString() {
+        return "Bureau [centre=" + centre + ", batiment=" + batiment + ", numero=" + numero + "]";
+    }
+
+    public void setCentre(String centre) {
+        this.centre = centre;
+    }
+
+    public String getBatiment() {
+        return batiment;
+    }
+
+    public void setBatiment(String batiment) {
+        this.batiment = batiment;
+    }
+
+    public Integer getNumero() {
+        return numero;
+    }
+
+    public void setNumero(Integer numero) {
+        this.numero = numero;
+    }
+
+    @Override
+    public String getSQLTypeName() throws SQLException {
+        return "TYPE_BUREAU";
+    }
+
+    @Override
+    public void readSQL(SQLInput stream, String type) throws SQLException {
+        this.centre = stream.readString();
+        this.batiment = stream.readString();
+        this.numero = stream.readInt();
+    }
+
+    @Override
+    public void writeSQL(SQLOutput stream) throws SQLException {
+        stream.writeString(this.centre);
+        stream.writeString(this.batiment);
+        stream.writeInt(this.numero);
+    }
+
+}
+Maintenant que nous disposons de cette classe, il convient d’indiquer à Oracle d’utiliser cette classe pour faire le mapping.
+
+Indication à Oracle de notre mapping
+Hashtable hashtable = new Hashtable<>();
+hashtable.put("ZARGON.TYPE_BUREAU", Bureau.class);
+
+OracleConnection oracon = (OracleConnection) connection;
+oracon.getTypeMap().putAll(hashtable);
+Désormais au sein de notre ResultSet nous pouvons utiliser la méthode getObject en castant vers un objet de type Bureau
+
+(Bureau) resultSet.getObject("BUREAU");
+8.4. Mapping d’Objets Oracle vers Java
+Nous savons lire un tableau de type primitif et nous savons lire un objet. En fusionnant les deux méthodes nous sommes capable de lire un tableau d’objet. Pour ce faire nous allons définir une classe Specialite
+
+Classe Java Specialite implémentant l’interface SQLData
+package fr.ugaritic.oracle;
+
+import java.sql.SQLData;
+import java.sql.SQLException;
+import java.sql.SQLInput;
+import java.sql.SQLOutput;
+
+public class Specialite implements SQLData{
+
+    protected String domaine;
+    protected String technologie;
+
+
+    public Specialite(String domaine, String technologie) {
+        this.domaine = domaine;
+        this.technologie = technologie;
+    }
+
+    public Specialite() {
+    }
+
+    public String getDomaine() {
+        return domaine;
+    }
+
+    public void setDomaine(String domaine) {
+        this.domaine = domaine;
+    }
+
+    public String getTechnologie() {
+        return technologie;
+    }
+
+    public void setTechnologie(String technologie) {
+        this.technologie = technologie;
+    }
+
+    @Override
+    public String getSQLTypeName() throws SQLException {
+        return "TYPE_SPECIALITE";
+    }
+
+    @Override
+    public String toString() {
+        return "Specialite [domaine=" + domaine + ", technologie=" + technologie + "]";
+    }
+
+    @Override
+    public void readSQL(SQLInput stream, String type) throws SQLException {
+        this.domaine = stream.readString();
+        this.technologie = stream.readString();
+    }
+
+    @Override
+    public void writeSQL(SQLOutput stream) throws SQLException {
+        stream.writeString(this.domaine);
+        stream.writeString(this.technologie);
+    }
+
+}
+Mise à jour du tableau de mapping
+hashtable.put("ZARGON.TYPE_SPECIALITE", Specialite.class);
+Lecture d’un tableau d’objets
+oracle.jdbc.OracleArray arraySpecialites = (OracleArray) resultSet.getArray("SPECIALITES");
+Object[] specialites = (Object[]) arraySpecialites.getArray(hashtable);
+System.out.println(Arrays.asList(specialites));
+ 

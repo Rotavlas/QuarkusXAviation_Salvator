@@ -1,0 +1,226 @@
+9. API REST et Oracle
+../../_images/quarkus-logo.png
+Quarkus (quarkus.io) est un framework d’application Java conçu pour fonctionner nativement avec Kubernetes, OpenJDK HotSpot et GraalVM.
+
+Comparativement à d’autres frameworks Java, tels que Spring, il offre une faible empreinte mémoire et un temps de démarrage réduit.
+
+Note
+
+Pour pas mal de personne du monde Java, Quarkus représente l’avenir du développement JEE.
+
+Le but de ce chapitre est de découvrir Quarkus et de développer rapidement une petite API REST.
+
+9.1. Création d’un projet Quarkus
+Comme précédement nous allons utiliser la commande maven pour créer un projet.
+
+Création d’un projet Quarkus de base pour une api REST
+mvn io.quarkus.platform:quarkus-maven-plugin:3.17.7:create -DprojectGroupId=fr.ugaritic -DprojectArtifactId=hello-oracle-rest -Dextensions='rest'
+Une fois notre projet créer nous allons lancer le serveur de développement livré avec Quarkus, celui-ci en plus d’afficher des informations de debug permet également de faire du hot reload.
+
+Lancement du serveur local de dev
+cd hello-oracle-rest
+./mvnw quarkus:dev
+Note
+
+Lors du premier lancement, Quarkus vous demande si vous l’autorisé à envoyer des données de télémétrie vous êtes bien sûr libre de répondre non.
+
+9.2. Modification d’une Ressource REST
+Quarkus fonctionne sur le principe de ressource REST, une ressource REST est défini par l’annotation @Path. Cette annotation permet une auto découverte automatique des ressources REST, ce qui est une réel avancé pa rapport aux anciennes méthodes de développement JEE.
+
+@Path("/hello")
+public class GreetingResource {
+
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    public String hello() {
+        return "Hello from Quarkus REST";
+    }
+}
+La description et le développement des ressource REST se fait par l’utilisation d’annotations:
+
+@GET permet d’indiquer la méthode HTTP à utiliser pour cette url
+
+@Path permet d’indiquer le chemin (l’url) pour accéder à notre méthode
+
+@Produces permet d’indiquer le format de sortie de notre méthode (TEXT, JSON ou encore XML)
+
+Ajout d’une seconde méthode
+@Path("/hello")
+public class GreetingResource {
+
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    public String hello() {
+        return "Hello from Quarkus REST";
+    }
+
+    @Path("/{name}")
+    @GET
+    @Produces
+    public String hello(@ParamPath("name") String name) {
+        return String.format("Hello %s", name);
+    }
+}
+Nous ajoutons une méthode qui prend en paramètre un paramètre d’url (ParamPath) et le retourne en réponse.
+
+9.3. Paramètrage d’une application Quarkus
+Quarkus permet automatiquement d’obtenir les données contenues dans le fichier application.properties.
+
+Pour mettre en place cela nous allons mettre à jour ce fichier, puis obtenir la données contenu dans welcome_text au sein de notre ressource GreetingResource et enfin l’afficher en retour de la méthode welcome.
+
+application.properties
+welcome_text=Welcome from fr.ugaritic.oracle
+Obtention automatique d’une valeur du application.properties
+public class GreetingResource {
+
+    @ConfigProperty(name="welcome_text")
+    String welcomeText;
+}
+@Path("")
+@GET
+@Produces(MediaType.TEXT_PLAIN)
+public String welcome(){
+    return welcomeText;
+}
+9.4. Quarkus et JDBC
+Quarkus fonctionne sur le principe des extensions, si nous souhaitons nous connecter à une base de données Oracle, il nous faut charger l’extension quarkus-jdbc-oracle.
+
+Ajout de l’extension jdbc-oracle
+./mvnw quarkus:add-extension -Dextensions="jdbc-oracle"
+Indication
+
+Ce chapitre n’est pas que lié à l’utilisation d’Oracle. Si l’on souhaite utiliser une base de données MySQL ou PostGreSQL, les extentions à utiliser sont jdbc-mysql, jdbc-postgresql ou encore jdbc-sqlite.
+
+Avertissement
+
+Quarkus (en mode dev) repose énormément sur l’utilisation de docker et des devservices pour créer automatiquement des bases de données. Dans notre cas nous avons déjà une base de données, nous donc demander à Quarkus de ne pas utiliser de devservices via ce paramètrage
+
+application.properties
+quarkus.devservices.enabled=false
+Nous allons indiquer à quarkus quelle est la datasource (notre base de données), que l’on souhaite utiliser. Pour ce faire nous allons ajouter une configuration au sein du fichier .env.
+
+fichier .env
+quarkus.datasource.jdbc.url=jdbc:oracle:thin:emp/admin@//localhost:1521/FREEPDB1
+Dans notre ressource, nous allons pouvoir injecter une instance de javax.sql.DataSource. Quarkus se charge automatiquement de lire notre paramètrage au sein du fichier .env et d’instancier une Datasource pour nous.
+
+Injection du datasource au sein de notre ressource REST
+@Inject
+DataSource oracleDataSource;
+Nous allons créer une classe Emp qui proposera plusieurs méthodes dont:
+
+findAll(DataSource datasource) qui permet de retrouver tous les employés de notre table
+
+Emp(ResultSet resultSet, Hashtable hashtable) qui est un constructeur qui se charge d’instancier à partir d’un resultSet une instance de notre entité Emp.
+
+Classe Emp
+public class Emp {
+
+    protected int id;
+    protected String nom;
+    protected String prenom;
+    protected List<BigDecimal> telephones;
+    protected List<Specialite> specialites;
+    protected Bureau bureau;
+
+    public static List<Emp> findAll(DataSource oracleDataSource) throws SQLException{
+        Hashtable hashtable = new Hashtable<>();
+        hashtable.put("TYPE_BUREAU", Bureau.class);
+        hashtable.put("TYPE_SPECIALITE", Specialite.class);
+
+        Connection connection = oracleDataSource.getConnection();
+        connection.getTypeMap().putAll(hashtable);
+
+
+        Statement statement = connection.createStatement();
+        ResultSet resultSet = statement.executeQuery("SELECT ID, NOM, PRENOM, BUREAU, SPECIALITES, TELEPHONES FROM EMP");
+        List<Emp> emps = new ArrayList<>();
+        while (resultSet.next()) {
+            emps.add(new Emp(resultSet, hashtable));
+        }
+        return emps;
+    }
+
+    public Emp(ResultSet resultSet, Hashtable hashtable) throws SQLException{
+        this.id = resultSet.getInt("ID");
+        this.nom = resultSet.getString("NOM");
+        this.prenom = resultSet.getString("PRENOM");
+
+        this.bureau = (Bureau) resultSet.getObject("BUREAU");
+        OracleArray arraySpecialites = (OracleArray) resultSet.getArray("SPECIALITES");
+        Object[] specialites = (Object[]) arraySpecialites.getArray(hashtable);
+        this.specialites = Arrays.asList(specialites).stream().map(element -> (Specialite) element).collect(Collectors.toList());
+    }
+}
+Indication
+
+N’oubliez pas de créer les getters, setters, constructeur vide et avec paramètres et la méthode toString via votre IDE.
+
+Enfin nous allons créer une ressource EmpResource et une méthode qui permet d’obtenir la liste des employés.
+
+@Path("/emp")
+public class EmpResource {
+
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<Emp> emp(){
+        try {
+            List<Emp> emps = Emp.findAll(oracleDataSource);
+            return emps;
+        } catch (SQLException e) {
+            System.err.println("Erreur lors de l'accès à la BDD" + e.getMessage());
+            return null;
+        }
+    }
+}
+Erreur
+
+Si l’on visite l’adresse http://127.0.0.1:8080/emp nous obtenons un résultat bizarre, notre JSON est cassé. En réalité nous n’avons pas ajouter d’extension pour gérer correctement la serialization et deserialization de notre bean Java. De fait quarkus retourne le toString de nos objets.
+
+Indication
+
+Nous allons ajouter l’extension rest-jackson pour corriger ce problème.
+
+Ajout de l’extension rest-jackson
+./mvnw quarkus:add-extension -Dextensions="rest-jackson"
+9.5. Quarkus et Hibernate/Panache
+C’est bien beau tout cela, mais tout les framework utilisent un ORM. Et Quarkus ne déroge pas à la règle. Comme d’habitude pour utiliser une foncitonnalité de Quarkus il faut ajouter une extension.
+
+Ajout de l’extension hibernate-orm-panache
+./mvnw quarkus:add-extension -Dextensions="hibernate-orm-panache"
+Nous allons créer une entité de notre table Monster présente dans l’échantillon de cette base de données Base HeroQuest
+
+@Entity
+public class Monster extends PanacheEntity {
+
+    public long id;
+    public String name;
+    public long movement_squares;
+    public long attack_dice;
+    public long defend_dice;
+    public long body_points;
+    public long mind_points;
+}
+Note
+
+Nous laissons nos attributs en public et nous n’ajoutons pas plus de méthodes à notre classe Monster.
+
+Puis une ressource REST pour utiliser cette entité
+
+Ressource Monster API REST
+@Path("/monster")
+public class MonsterResource {
+
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<Monster> all(){
+        return Monster.findAll().list();
+    }
+
+    @Path("/q")
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Monster findByQuery(@QueryParam("name") String name){
+        return Monster.find("name", name).firstResult();
+    }
+}
+ 
